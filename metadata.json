@@ -1,0 +1,5 @@
+{
+  "name": "Impact Flow Task Manager",
+  "description": "A comprehensive task management system focusing on subtask tracking, business impact metrics visualization, and AI-assisted process diagram generation.",
+  "requestFramePermissions": []
+}
