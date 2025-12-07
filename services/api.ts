@@ -346,6 +346,25 @@ class ApiClient {
     }
 
     /**
+     * Delete organization (Owner only)
+     */
+    async deleteOrganization(organizationId: string): Promise<void> {
+        await this.request(`/organizations/${organizationId}`, {
+            method: 'DELETE',
+        });
+    }
+
+    /**
+     * Upload organization banner (Owner/Admin only)
+     */
+    async uploadOrganizationBanner(organizationId: string, base64Image: string): Promise<void> {
+        await this.request(`/organizations/${organizationId}/banner`, {
+            method: 'POST',
+            body: JSON.stringify({ banner: base64Image }),
+        });
+    }
+
+    /**
      * Request to join organization
      */
     async requestJoin(organizationId: string): Promise<void> {

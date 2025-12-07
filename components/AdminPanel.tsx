@@ -20,11 +20,18 @@ interface AdminPanelProps {
 
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
 
-export const AdminPanel: React.FC<AdminPanelProps> = ({ 
-  currentUser, users, teams, joinRequests, onAddUser, onRemoveUser, onUpdateUser, onAddTeam, onRemoveTeam, onRefresh 
+export const AdminPanel: React.FC<AdminPanelProps> = ({
+  currentUser, users, teams, joinRequests, onAddUser, onRemoveUser, onUpdateUser, onAddTeam, onRemoveTeam, onRefresh
 }) => {
-  const [activeTab, setActiveTab] = useState<'INBOX' | 'USERS' | 'TEAMS' | 'API_KEY'>('INBOX');
+  console.log('AdminPanel: Received joinRequests prop:', joinRequests);
+  console.log('AdminPanel: joinRequests length:', joinRequests.length);
+  console.log('AdminPanel: currentUser role:', currentUser.role);
+  console.log('AdminPanel: currentUser organizationId:', currentUser.organizationId);
+
+  const [activeTab, setActiveTab] = useState<'INBOX' | 'USERS' | 'TEAMS' | 'ORG_SETTINGS' | 'API_KEY'>('INBOX');
   const [taskRequests, setTaskRequests] = useState<TaskAssignmentRequest[]>([]);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [bannerPreview, setBannerPreview] = useState<string | null>(null);
   
   // User Form State
   const [newUserName, setNewUserName] = useState('');
@@ -177,7 +184,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleProcessRequest = async (reqId: string, status: 'APPROVED' | 'REJECTED') => {
       try {
-          await api.processJoinRequest(reqId, status);
+          await api.processJoinRequest(currentUser.organizationId!, reqId, status);
           onRefresh(); // Replaces reload
       } catch (err) {
           console.error('Failed to process join request:', err);
@@ -191,6 +198,68 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           setTaskRequests(taskRequests.filter(r => r.id !== reqId));
       } catch (err) {
           console.error('Failed to process task assignment request:', err);
+      }
+  };
+
+  const handleDeleteOrganization = async () => {
+      const confirmText = `DELETE ${currentUser.organizationId}`;
+      const userInput = prompt(
+          `⚠️ WARNING: This will permanently delete the organization and ALL associated data:\n\n` +
+          `• All users\n` +
+          `• All teams\n` +
+          `• All tasks\n` +
+          `• All data\n\n` +
+          `This action CANNOT be undone!\n\n` +
+          `Type "${confirmText}" to confirm:`
+      );
+
+      if (userInput === confirmText) {
+          try {
+              await api.deleteOrganization(currentUser.organizationId!);
+              alert('Organization deleted successfully. You will be logged out.');
+              window.location.href = '/';
+          } catch (err: any) {
+              alert('Failed to delete organization: ' + (err.message || 'Unknown error'));
+          }
+      } else if (userInput !== null) {
+          alert('Confirmation text did not match. Organization NOT deleted.');
+      }
+  };
+
+  const handleBannerUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      // Validate file type
+      if (!['image/png', 'image/jpeg', 'image/jpg'].includes(file.type)) {
+          alert('Please upload a PNG or JPG image');
+          return;
+      }
+
+      // Validate file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+          alert('Image must be less than 2MB');
+          return;
+      }
+
+      setUploadingBanner(true);
+      try {
+          // Convert to base64
+          const reader = new FileReader();
+          reader.onloadend = async () => {
+              const base64 = reader.result as string;
+              setBannerPreview(base64);
+
+              // Upload to backend
+              await api.uploadOrganizationBanner(currentUser.organizationId!, base64);
+              alert('Banner uploaded successfully!');
+              onRefresh();
+          };
+          reader.readAsDataURL(file);
+      } catch (err: any) {
+          alert('Failed to upload banner: ' + (err.message || 'Unknown error'));
+      } finally {
+          setUploadingBanner(false);
       }
   };
 
@@ -255,6 +324,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Briefcase className="w-4 h-4" /> Team Structure
         </button>
+        {(isOwner || isAdmin) && (
+          <button
+            onClick={() => setActiveTab('ORG_SETTINGS')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'ORG_SETTINGS' ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 hover:bg-slate-100'}`}
+          >
+            <Building2 className="w-4 h-4" /> Organization
+          </button>
+        )}
         <button
           onClick={() => setActiveTab('API_KEY')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'API_KEY' ? 'bg-green-100 text-green-700' : 'text-slate-500 hover:bg-slate-100'}`}
@@ -282,7 +359,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         return (
                             <div key={req.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
                                 <div>
-                                    <p className="font-bold text-slate-800">Request from User ID: {req.userId}</p>
+                                    <p className="font-bold text-slate-800">{req.name || 'Unknown User'} <span className="text-slate-500 font-normal">(@{req.username || req.userId})</span></p>
                                     <p className="text-xs text-slate-500">{new Date(req.createdAt).toLocaleString()}</p>
                                 </div>
                                 <div className="flex gap-2">
@@ -647,6 +724,64 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {isTeamAdmin && teams.length === 0 && <p className="text-slate-400 text-sm">You are not assigned to any teams.</p>}
             </div>
          </div>
+      )}
+
+      {activeTab === 'ORG_SETTINGS' && (isOwner || isAdmin) && (
+        <div className="space-y-6">
+          {/* Banner Upload Section */}
+          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <h3 className="text-lg font-bold text-slate-800 mb-4">Organization Banner</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Upload a custom banner for your organization. This will appear in the top left of the sidebar. Accepted formats: PNG, JPG (max 2MB)
+            </p>
+
+            {/* Current Banner Preview */}
+            {bannerPreview && (
+              <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                <p className="text-xs font-bold text-slate-500 uppercase mb-2">Preview:</p>
+                <img
+                  src={bannerPreview}
+                  alt="Banner preview"
+                  className="h-12 w-auto max-w-full object-contain"
+                />
+              </div>
+            )}
+
+            {/* Upload Input */}
+            <div className="flex items-center gap-4">
+              <label className="cursor-pointer px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2">
+                <Building2 className="w-4 h-4" />
+                {uploadingBanner ? 'Uploading...' : 'Choose Banner'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg"
+                  onChange={handleBannerUpload}
+                  disabled={uploadingBanner}
+                  className="hidden"
+                />
+              </label>
+              <span className="text-sm text-slate-500">PNG or JPG, max 2MB</span>
+            </div>
+          </div>
+
+          {/* Danger Zone */}
+          <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6">
+            <h3 className="text-lg font-bold text-red-800 mb-2 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" />
+              Danger Zone
+            </h3>
+            <p className="text-sm text-red-700 mb-4">
+              Deleting the organization will permanently remove ALL data including users, teams, tasks, and settings. This action cannot be undone.
+            </p>
+            <button
+              onClick={handleDeleteOrganization}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
+            >
+              <Trash className="w-4 h-4" />
+              Delete Organization
+            </button>
+          </div>
+        </div>
       )}
 
       {activeTab === 'API_KEY' && (

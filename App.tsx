@@ -97,93 +97,111 @@ export const App: React.FC = () => {
   const refreshData = async (user: User = currentUser!) => {
     if (!user) return;
 
-    // FETCH ALL DATA
-    const [allTasks, allUsers, allTeams, allReqs, allOrgs] = await Promise.all([
-        api.getTasks(),
-        api.getUsers(),
-        api.getTeams(),
-        api.getJoinRequests(),
-        api.getOrganizations()
-    ]);
-
-    // FILTER BY ORGANIZATION (Multi-Tenancy)
-    if (user.role === UserRole.SYSTEM_ADMIN) return;
-
-    const orgId = user.organizationId;
-    
-    // Resolve Org Name
-    if (orgId) {
-        const myOrg = allOrgs.find(o => o.id === orgId);
-        setOrgName(myOrg ? myOrg.name : 'Impact Flow');
-    }
-
-    const orgUsers = allUsers.filter(u => u.organizationId === orgId);
-    const orgTeams = allTeams.filter(t => t.organizationId === orgId);
-    
-    // --- TASK VISIBILITY LOGIC ---
-    let visibleTasks = allTasks.filter(t => t.organizationId === orgId);
-
-    if (user.role === UserRole.OWNER || user.role === UserRole.ADMIN) {
-        // 1. OWNERS / ORG ADMINS: See ALL tasks in the organization
-    } 
-    else if (user.role === UserRole.TEAM_ADMIN) {
-        // 2. TEAM ADMINS: See tasks assigned to themselves, tasks assigned to their team members, or tasks where they are admin
-        const myTeamIds = user.teamIds || [];
-        const usersInMyTeams = orgUsers
-            .filter(u => u.teamIds.some(tid => myTeamIds.includes(tid)))
-            .map(u => u.id);
-
-        visibleTasks = visibleTasks.filter(t => {
-            const isAssignedToMe = t.assigneeIds.includes(user.id);
-            
-            // Refined Visibility: Only see tasks in my team scope or assigned to me directly.
-            // Hide tasks assigned to random users outside my team (even if I created them via generator)
-            
-            // Check if task is assigned to someone in my team (or unassigned and assigned to my team)
-            const isAssignedToMyTeamUser = t.assigneeIds.some(aid => usersInMyTeams.includes(aid));
-            const isAssignedToMyTeamDirectly = t.assignedTeamId ? myTeamIds.includes(t.assignedTeamId) : false;
-            
-            // Only allow admin access if the task falls within my scope
-            const isRelevantAdmin = t.adminIds?.includes(user.id) && (
-                t.assigneeIds.length === 0 || 
-                t.assigneeIds.some(aid => usersInMyTeams.includes(aid) || aid === user.id)
-            );
-
-            return isAssignedToMe || isRelevantAdmin || isAssignedToMyTeamUser || isAssignedToMyTeamDirectly;
-        });
-    } 
-    else {
-        // 3. STANDARD USERS: See only tasks assigned to them, created by them, or explicit admin
-        visibleTasks = visibleTasks.filter(t => {
-            const isAssignedToMe = t.assigneeIds.includes(user.id);
-            const isCreator = t.creatorId === user.id;
-            const isExplicitAdmin = t.adminIds?.includes(user.id);
-
-            return isAssignedToMe || isCreator || isExplicitAdmin;
-        });
-    }
-
-    // Auto-update OVERDUE status
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    
-    const processedTasks = visibleTasks.map(t => {
-        // Only mark overdue if active. Failed and Postponed are considered handled states.
-        if (t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.FAILED && t.status !== TaskStatus.POSTPONED && t.dueDate) {
-            const dueStr = new Date(t.dueDate).toISOString().split('T')[0];
-            if (dueStr < todayStr && t.status !== TaskStatus.OVERDUE) {
-                return { ...t, status: TaskStatus.OVERDUE };
-            }
+    try {
+        // Set organization name from user object (comes from backend)
+        if (user.organizationName) {
+            setOrgName(user.organizationName);
+        } else {
+            setOrgName('Impact Flow');
         }
-        return t;
-    });
 
-    const orgReqs = allReqs.filter(r => r.organizationId === orgId);
+        // FETCH ALL DATA
+        const [allTasks, allUsers, allTeams, allReqs, allOrgs] = await Promise.all([
+            api.getTasks(),
+            api.getUsers(),
+            api.getTeams(),
+            api.getJoinRequests().catch(err => {
+                console.error('Failed to fetch join requests:', err);
+                return []; // Return empty array on error
+            }),
+            api.getOrganizations().catch(err => {
+                console.error('Failed to fetch organizations:', err);
+                return []; // Return empty array on error
+            })
+        ]);
 
-    setUsers(orgUsers);
-    setTeams(orgTeams);
-    setTasks(processedTasks);
-    setJoinRequests(orgReqs);
+        console.log('DEBUG: Fetched join requests:', allReqs);
+        console.log('DEBUG: User organizationId:', user.organizationId);
+        console.log('DEBUG: User role:', user.role);
+
+        const orgId = user.organizationId;
+
+        // FILTER BY ORGANIZATION (Multi-Tenancy)
+        if (user.role === UserRole.SYSTEM_ADMIN) return;
+
+        const orgUsers = allUsers.filter(u => u.organizationId === orgId);
+        const orgTeams = allTeams.filter(t => t.organizationId === orgId);
+
+        // --- TASK VISIBILITY LOGIC ---
+        let visibleTasks = allTasks.filter(t => t.organizationId === orgId);
+
+        if (user.role === UserRole.OWNER || user.role === UserRole.ADMIN) {
+            // 1. OWNERS / ORG ADMINS: See ALL tasks in the organization
+        }
+        else if (user.role === UserRole.TEAM_ADMIN) {
+            // 2. TEAM ADMINS: See tasks assigned to themselves, tasks assigned to their team members, or tasks where they are admin
+            const myTeamIds = user.teamIds || [];
+            const usersInMyTeams = orgUsers
+                .filter(u => u.teamIds.some(tid => myTeamIds.includes(tid)))
+                .map(u => u.id);
+
+            visibleTasks = visibleTasks.filter(t => {
+                const isAssignedToMe = t.assigneeIds.includes(user.id);
+
+                // Refined Visibility: Only see tasks in my team scope or assigned to me directly.
+                // Hide tasks assigned to random users outside my team (even if I created them via generator)
+
+                // Check if task is assigned to someone in my team (or unassigned and assigned to my team)
+                const isAssignedToMyTeamUser = t.assigneeIds.some(aid => usersInMyTeams.includes(aid));
+                const isAssignedToMyTeamDirectly = t.assignedTeamId ? myTeamIds.includes(t.assignedTeamId) : false;
+
+                // Only allow admin access if the task falls within my scope
+                const isRelevantAdmin = t.adminIds?.includes(user.id) && (
+                    t.assigneeIds.length === 0 ||
+                    t.assigneeIds.some(aid => usersInMyTeams.includes(aid) || aid === user.id)
+                );
+
+                return isAssignedToMe || isRelevantAdmin || isAssignedToMyTeamUser || isAssignedToMyTeamDirectly;
+            });
+        }
+        else {
+            // 3. STANDARD USERS: See only tasks assigned to them, created by them, or explicit admin
+            visibleTasks = visibleTasks.filter(t => {
+                const isAssignedToMe = t.assigneeIds.includes(user.id);
+                const isCreator = t.creatorId === user.id;
+                const isExplicitAdmin = t.adminIds?.includes(user.id);
+
+                return isAssignedToMe || isCreator || isExplicitAdmin;
+            });
+        }
+
+        // Auto-update OVERDUE status
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+
+        const processedTasks = visibleTasks.map(t => {
+            // Only mark overdue if active. Failed and Postponed are considered handled states.
+            if (t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.FAILED && t.status !== TaskStatus.POSTPONED && t.dueDate) {
+                const dueStr = new Date(t.dueDate).toISOString().split('T')[0];
+                if (dueStr < todayStr && t.status !== TaskStatus.OVERDUE) {
+                    return { ...t, status: TaskStatus.OVERDUE };
+                }
+            }
+            return t;
+        });
+
+        const orgReqs = allReqs.filter(r => r.organizationId === orgId);
+
+        console.log('DEBUG: Filtered join requests for org:', orgReqs);
+        console.log('DEBUG: Setting joinRequests state with', orgReqs.length, 'requests');
+
+        setUsers(orgUsers);
+        setTeams(orgTeams);
+        setTasks(processedTasks);
+        setJoinRequests(orgReqs);
+    } catch (error) {
+        console.error('Error refreshing data:', error);
+    }
   };
 
   const handleLogin = (user: User) => {
@@ -403,11 +421,13 @@ export const App: React.FC = () => {
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-2 font-bold text-white text-lg">
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-white" />
-                </div>
-                {orgName}
+            <div className="flex items-center">
+                <img
+                    src={currentUser?.organizationBannerUrl || "/images/chart.png"}
+                    alt="Organization Logo"
+                    className="w-auto max-w-full object-contain"
+                    style={{ height: '130.68px' }}
+                />
             </div>
             <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white">
                 <X className="w-6 h-6" />
@@ -478,15 +498,21 @@ export const App: React.FC = () => {
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
               <Menu className="w-6 h-6" />
             </button>
-            <h1 className="text-xl font-bold text-slate-800 hidden md:block">
-              {view === 'DASHBOARD' ? 'Dashboard' : 
-               view === 'TASKS' ? 'All Tasks' : 
-               view === 'CALENDAR' ? 'Calendar' : 
-               view === 'TIMELINE' ? 'Timeline' :
-               view === 'ADMIN' ? 'Organization Settings' :
-               view === 'REPORTS' ? 'System Reports' :
-               'Notifications'}
-            </h1>
+            <div className="hidden md:block">
+              <h1 className="text-xl font-bold text-slate-800">
+                {view === 'DASHBOARD' ? 'Dashboard' :
+                 view === 'TASKS' ? 'All Tasks' :
+                 view === 'CALENDAR' ? 'Calendar' :
+                 view === 'TIMELINE' ? 'Timeline' :
+                 view === 'ADMIN' ? 'Organization Settings' :
+                 view === 'REPORTS' ? 'System Reports' :
+                 'Notifications'}
+              </h1>
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <Building2 className="w-3.5 h-3.5" />
+                <span>{orgName}</span>
+              </div>
+            </div>
           </div>
           
           <div className="flex items-center gap-4">

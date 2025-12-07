@@ -83,9 +83,11 @@ export const validateSession = async (token) => {
 
     const result = await query(
         `SELECT s.*, u.id as user_id, u.username, u.name, u.email, u.role,
-                u.organization_id, u.avatar_initials
+                u.organization_id, u.avatar_initials, o.name as organization_name,
+                o.banner_url as organization_banner_url
          FROM sessions s
          JOIN users u ON s.user_id = u.id
+         LEFT JOIN organizations o ON u.organization_id = o.id
          WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
         [tokenHash]
     );
@@ -113,6 +115,8 @@ export const validateSession = async (token) => {
         email: session.email,
         role: session.role,
         organizationId: session.organization_id,
+        organizationName: session.organization_name,
+        organizationBannerUrl: session.organization_banner_url,
         avatarInitials: session.avatar_initials,
         teamIds: teamsResult.rows.map(r => r.team_id)
     };

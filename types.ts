@@ -71,6 +71,8 @@ export interface JoinRequest {
   organizationId: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: Date;
+  username?: string;
+  name?: string;
 }
 
 export interface TaskAssignmentRequest {
@@ -95,11 +97,12 @@ export interface Team {
 export interface User {
   id: string;
   organizationId?: string | null; // Null if not in an org yet
+  organizationName?: string | null; // Organization name (from backend)
+  organizationBannerUrl?: string | null; // Organization banner (from backend)
   name: string;
   username: string; // Login ID
   passwordHash?: string; // Hashed password (Argon2)
   recoveryKey?: string; // RK-XXXX-XXXX-XXXX
-  email: string; // Optional / Display only
   role: UserRole;
   teamIds: string[]; // Support multiple teams
   avatarInitials: string;
@@ -253,7 +256,7 @@ export interface ReportSchedule {
     rangeStartOffset: number; // "Days to go back" (e.g. 7 means 7 days ago)
     rangeEndOffset: number;   // "Anchor Date" (e.g. 0 means Today)
     
-    recipients: string[]; // emails
+    recipients: string[]; 
     lastRun?: Date;
     active: boolean;
 }

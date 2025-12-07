@@ -221,8 +221,8 @@ export const ApiKeySettings: React.FC<ApiKeySettingsProps> = ({
                         <div className="text-xs text-amber-800">
                             <p className="font-medium mb-1">Security Information</p>
                             <ul className="list-disc list-inside space-y-1 text-amber-700">
-                                <li>Your API key is encrypted using Argon2id (same as passwords)</li>
-                                <li>256 iterations, 512KB memory for strong encryption</li>
+                                <li>Your API key is encrypted using AES-256-GCM with authenticated encryption</li>
+                                <li>Each key uses a unique initialization vector (IV) for maximum security</li>
                                 <li>This key is personal to you and not shared with others</li>
                                 <li>The key is never transmitted or stored in plain text</li>
                             </ul>

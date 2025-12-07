@@ -9,10 +9,11 @@ const router = express.Router();
 router.use(requireAuth);
 
 // ============================================================================
-// GET ALL ORGANIZATIONS (System Admin only)
+// GET ALL ORGANIZATIONS
 // ============================================================================
-router.get('/', requireRole(['SYSTEM_ADMIN']), async (req, res) => {
+router.get('/', async (req, res) => {
     try {
+        // All authenticated users can see the list of organizations (for join requests)
         const result = await query(
             `SELECT id, name, owner_id, created_at, updated_at
              FROM organizations
@@ -156,6 +157,60 @@ router.put('/:id', async (req, res) => {
 });
 
 // ============================================================================
+// UPLOAD ORGANIZATION BANNER (Owner/Admin only)
+// ============================================================================
+router.post('/:id/banner', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { banner } = req.body;
+
+        // Only OWNER or ADMIN can upload banner
+        if (!['OWNER', 'ADMIN'].includes(req.user.role) || req.user.organizationId !== id) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        if (!banner || !banner.trim()) {
+            return res.status(400).json({ error: 'Banner data is required' });
+        }
+
+        // Validate base64 image format
+        if (!banner.startsWith('data:image/')) {
+            return res.status(400).json({ error: 'Invalid image format' });
+        }
+
+        // Update organization banner
+        const result = await query(
+            `UPDATE organizations
+             SET banner_url = $1, updated_at = NOW()
+             WHERE id = $2
+             RETURNING id, name, banner_url`,
+            [banner, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        // Audit log
+        await logAudit(
+            req.user.id,
+            id,
+            'ORGANIZATION_BANNER_UPDATED',
+            'organization',
+            id,
+            { banner_uploaded: true },
+            req.ip,
+            req.get('user-agent')
+        );
+
+        res.json({ message: 'Banner uploaded successfully', organization: result.rows[0] });
+    } catch (error) {
+        console.error('Upload banner error:', error);
+        res.status(500).json({ error: 'Failed to upload banner' });
+    }
+});
+
+// ============================================================================
 // DELETE ORGANIZATION (Owner only)
 // ============================================================================
 router.delete('/:id', async (req, res) => {
@@ -199,6 +254,53 @@ router.delete('/:id', async (req, res) => {
 // ============================================================================
 // JOIN REQUESTS
 // ============================================================================
+
+// Get all join requests (for user's own requests OR their organization's requests)
+router.get('/join-requests', async (req, res) => {
+    try {
+        let result;
+
+        // If user has an organization and is OWNER/ADMIN, get organization's join requests
+        if (req.user.organizationId && ['OWNER', 'ADMIN'].includes(req.user.role)) {
+            result = await query(
+                `SELECT jr.id,
+                        jr.user_id as "userId",
+                        jr.organization_id as "organizationId",
+                        jr.status,
+                        jr.created_at as "createdAt",
+                        jr.processed_at as "processedAt",
+                        jr.processed_by as "processedBy",
+                        u.username,
+                        u.name
+                 FROM join_requests jr
+                 JOIN users u ON jr.user_id = u.id
+                 WHERE jr.organization_id = $1 AND jr.status = 'PENDING'
+                 ORDER BY jr.created_at DESC`,
+                [req.user.organizationId]
+            );
+        } else {
+            // Otherwise, get user's own join requests
+            result = await query(
+                `SELECT jr.id,
+                        jr.user_id as "userId",
+                        jr.organization_id as "organizationId",
+                        jr.status,
+                        jr.created_at as "createdAt",
+                        jr.processed_at as "processedAt",
+                        jr.processed_by as "processedBy"
+                 FROM join_requests jr
+                 WHERE jr.user_id = $1
+                 ORDER BY jr.created_at DESC`,
+                [req.user.id]
+            );
+        }
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Get join requests error:', error);
+        res.status(500).json({ error: 'Failed to fetch join requests' });
+    }
+});
 
 // Get join requests for organization (Admin/Owner only)
 router.get('/:id/join-requests', async (req, res) => {

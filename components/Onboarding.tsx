@@ -78,7 +78,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete, onLogo
             const reqs = await api.getJoinRequests();
             setPendingRequests(reqs.filter(r => r.userId === user.id && r.status === 'PENDING'));
         } catch (err) {
-            alert("Request already pending");
+            console.error('Join request error:', err);
+            // Silently handle error - user likely already has a pending request
         } finally {
             setIsSubmitting(false);
         }
