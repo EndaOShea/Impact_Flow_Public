@@ -120,10 +120,6 @@ export const App: React.FC = () => {
             })
         ]);
 
-        console.log('DEBUG: Fetched join requests:', allReqs);
-        console.log('DEBUG: User organizationId:', user.organizationId);
-        console.log('DEBUG: User role:', user.role);
-
         const orgId = user.organizationId;
 
         // FILTER BY ORGANIZATION (Multi-Tenancy)
@@ -191,9 +187,6 @@ export const App: React.FC = () => {
         });
 
         const orgReqs = allReqs.filter(r => r.organizationId === orgId);
-
-        console.log('DEBUG: Filtered join requests for org:', orgReqs);
-        console.log('DEBUG: Setting joinRequests state with', orgReqs.length, 'requests');
 
         setUsers(orgUsers);
         setTeams(orgTeams);
@@ -813,7 +806,7 @@ export const App: React.FC = () => {
                         joinRequests={joinRequests}
                         onAddUser={async (u, p) => { await api.createUser(u, p); refreshData(); }}
                         onRemoveUser={async (id) => { await api.deleteUser(id); refreshData(); }}
-                        onUpdateUser={async (u) => { await api.updateUser(u.id, u); refreshData(); }}
+                        onUpdateUser={async (u) => { await api.updateUser(u); refreshData(); }}
                         onAddTeam={async (t) => { await api.createTeam(t); refreshData(); }}
                         onRemoveTeam={async (id) => { await api.deleteTeam(id); refreshData(); }}
                         onRefresh={() => refreshData()}

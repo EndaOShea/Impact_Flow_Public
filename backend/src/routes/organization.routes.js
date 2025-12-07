@@ -28,6 +28,79 @@ router.get('/', async (req, res) => {
 });
 
 // ============================================================================
+// JOIN REQUESTS
+// ============================================================================
+// IMPORTANT: These routes MUST come before /:id routes to avoid parameter matching
+
+// Get all join requests (for user's own requests OR their organization's requests)
+router.get('/join-requests', async (req, res) => {
+    try {
+        let result;
+
+        // If user has an organization and is OWNER/ADMIN, get organization's join requests
+        if (req.user.organizationId && ['OWNER', 'ADMIN'].includes(req.user.role)) {
+            result = await query(
+                `SELECT jr.id,
+                        jr.user_id as "userId",
+                        jr.organization_id as "organizationId",
+                        jr.status,
+                        jr.created_at as "createdAt",
+                        jr.processed_at as "processedAt",
+                        jr.processed_by as "processedBy",
+                        u.username,
+                        u.name
+                 FROM join_requests jr
+                 JOIN users u ON jr.user_id = u.id
+                 WHERE jr.organization_id = $1 AND jr.status = 'PENDING'
+                 ORDER BY jr.created_at DESC`,
+                [req.user.organizationId]
+            );
+        } else {
+            // Otherwise, get user's own join requests
+            result = await query(
+                `SELECT jr.id,
+                        jr.user_id as "userId",
+                        jr.organization_id as "organizationId",
+                        jr.status,
+                        jr.created_at as "createdAt",
+                        jr.processed_at as "processedAt",
+                        jr.processed_by as "processedBy"
+                 FROM join_requests jr
+                 WHERE jr.user_id = $1
+                 ORDER BY jr.created_at DESC`,
+                [req.user.id]
+            );
+        }
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Get join requests error:', error);
+        res.status(500).json({ error: 'Failed to fetch join requests' });
+    }
+});
+
+// Cancel join request (by the requester)
+router.delete('/join-requests/:requestId', async (req, res) => {
+    try {
+        const { requestId } = req.params;
+
+        const result = await query(
+            'DELETE FROM join_requests WHERE id = $1 AND user_id = $2 AND status = $3 RETURNING id',
+            [requestId, req.user.id, 'PENDING']
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Join request not found or cannot be cancelled' });
+        }
+
+        res.json({ message: 'Join request cancelled successfully' });
+    } catch (error) {
+        console.error('Cancel join request error:', error);
+        res.status(500).json({ error: 'Failed to cancel join request' });
+    }
+});
+
+// ============================================================================
 // GET SINGLE ORGANIZATION
 // ============================================================================
 router.get('/:id', async (req, res) => {
@@ -251,57 +324,6 @@ router.delete('/:id', async (req, res) => {
     }
 });
 
-// ============================================================================
-// JOIN REQUESTS
-// ============================================================================
-
-// Get all join requests (for user's own requests OR their organization's requests)
-router.get('/join-requests', async (req, res) => {
-    try {
-        let result;
-
-        // If user has an organization and is OWNER/ADMIN, get organization's join requests
-        if (req.user.organizationId && ['OWNER', 'ADMIN'].includes(req.user.role)) {
-            result = await query(
-                `SELECT jr.id,
-                        jr.user_id as "userId",
-                        jr.organization_id as "organizationId",
-                        jr.status,
-                        jr.created_at as "createdAt",
-                        jr.processed_at as "processedAt",
-                        jr.processed_by as "processedBy",
-                        u.username,
-                        u.name
-                 FROM join_requests jr
-                 JOIN users u ON jr.user_id = u.id
-                 WHERE jr.organization_id = $1 AND jr.status = 'PENDING'
-                 ORDER BY jr.created_at DESC`,
-                [req.user.organizationId]
-            );
-        } else {
-            // Otherwise, get user's own join requests
-            result = await query(
-                `SELECT jr.id,
-                        jr.user_id as "userId",
-                        jr.organization_id as "organizationId",
-                        jr.status,
-                        jr.created_at as "createdAt",
-                        jr.processed_at as "processedAt",
-                        jr.processed_by as "processedBy"
-                 FROM join_requests jr
-                 WHERE jr.user_id = $1
-                 ORDER BY jr.created_at DESC`,
-                [req.user.id]
-            );
-        }
-
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Get join requests error:', error);
-        res.status(500).json({ error: 'Failed to fetch join requests' });
-    }
-});
-
 // Get join requests for organization (Admin/Owner only)
 router.get('/:id/join-requests', async (req, res) => {
     try {
@@ -372,7 +394,7 @@ router.post('/:id/join-request', async (req, res) => {
 });
 
 // Approve join request
-router.post('/:orgId/join-requests/:requestId/approve', async (req, res) => {
+router.post('/:orgId/join-requests/:requestId/approved', async (req, res) => {
     try {
         const { orgId, requestId } = req.params;
 
@@ -429,7 +451,7 @@ router.post('/:orgId/join-requests/:requestId/approve', async (req, res) => {
 });
 
 // Reject join request
-router.post('/:orgId/join-requests/:requestId/reject', async (req, res) => {
+router.post('/:orgId/join-requests/:requestId/rejected', async (req, res) => {
     try {
         const { orgId, requestId } = req.params;
 
@@ -466,27 +488,6 @@ router.post('/:orgId/join-requests/:requestId/reject', async (req, res) => {
     } catch (error) {
         console.error('Reject join request error:', error);
         res.status(500).json({ error: 'Failed to reject join request' });
-    }
-});
-
-// Cancel join request (by the requester)
-router.delete('/join-requests/:requestId', async (req, res) => {
-    try {
-        const { requestId } = req.params;
-
-        const result = await query(
-            'DELETE FROM join_requests WHERE id = $1 AND user_id = $2 AND status = $3 RETURNING id',
-            [requestId, req.user.id, 'PENDING']
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Join request not found or cannot be cancelled' });
-        }
-
-        res.json({ message: 'Join request cancelled successfully' });
-    } catch (error) {
-        console.error('Cancel join request error:', error);
-        res.status(500).json({ error: 'Failed to cancel join request' });
     }
 });
 

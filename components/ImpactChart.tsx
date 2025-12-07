@@ -112,18 +112,18 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       {/* Total Impact Bar Chart */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-full min-h-[400px]">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[450px]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
             <div>
                 <h3 className="text-lg font-semibold text-slate-800">Business Impact Over Time</h3>
                 <p className="text-sm text-slate-500">Projected value based on task due dates</p>
             </div>
-            
+
             <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Filter className="h-4 w-4 text-slate-400" />
                 </div>
-                <select 
+                <select
                     value={filter}
                     onChange={(e) => setFilter(e.target.value as FilterOption)}
                     className="pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer shadow-sm hover:border-slate-400 transition-colors"
@@ -138,26 +138,26 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
                 </select>
             </div>
         </div>
-        
-        <div className="flex-1 w-full min-h-[300px]">
+
+        <div className="flex-1 w-full" style={{ minHeight: 0 }}>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                 <XAxis dataKey="name" tick={{fontSize: 12}} stroke="#64748b" axisLine={false} tickLine={false} dy={10} />
                 <YAxis tick={{fontSize: 12}} stroke="#64748b" axisLine={false} tickLine={false} tickFormatter={(val) => val >= 1000 ? `${val/1000}k` : val} />
-                <Tooltip 
+                <Tooltip
                   cursor={{fill: '#f8fafc'}}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                   formatter={(value: number) => [
-                      `${filterConfig.currency === 'USD' ? '$' : filterConfig.currency === 'EUR' ? '€' : filterConfig.currency === 'GBP' ? '£' : ''}${value.toLocaleString()} ${!filter.includes('REVENUE') ? '' : ''}`, 
+                      `${filterConfig.currency === 'USD' ? '$' : filterConfig.currency === 'EUR' ? '€' : filterConfig.currency === 'GBP' ? '£' : ''}${value.toLocaleString()} ${!filter.includes('REVENUE') ? '' : ''}`,
                       filterConfig.label
                   ]}
                 />
-                <Bar 
-                    dataKey="value" 
-                    fill={filterConfig.color} 
-                    radius={[6, 6, 0, 0]} 
+                <Bar
+                    dataKey="value"
+                    fill={filterConfig.color}
+                    radius={[6, 6, 0, 0]}
                     barSize={40}
                     name={filterConfig.label}
                     animationDuration={1000}
@@ -174,32 +174,39 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
       </div>
 
       {/* Task Status Pie Chart */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-full min-h-[400px]">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[450px]">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Task Progress Overview</h3>
-        <div className="flex-1 w-full min-h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={statusData}
-                cx="50%"
-                cy="50%"
-                innerRadius={80}
-                outerRadius={100}
-                fill="#8884d8"
-                paddingAngle={5}
-                dataKey="value"
-                stroke="none"
-              >
-                {statusData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip 
-                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-              />
-              <Legend verticalAlign="bottom" height={36} iconType="circle" />
-            </PieChart>
-          </ResponsiveContainer>
+        <div className="flex-1 w-full" style={{ minHeight: 0 }}>
+          {statusData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={statusData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={80}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  paddingAngle={5}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {statusData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                />
+                <Legend verticalAlign="bottom" height={36} iconType="circle" />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-100 rounded-xl">
+              <p>No task data available.</p>
+              <p className="text-xs mt-1">Create some tasks to see progress.</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

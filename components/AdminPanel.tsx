@@ -23,11 +23,6 @@ const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@
 export const AdminPanel: React.FC<AdminPanelProps> = ({
   currentUser, users, teams, joinRequests, onAddUser, onRemoveUser, onUpdateUser, onAddTeam, onRemoveTeam, onRefresh
 }) => {
-  console.log('AdminPanel: Received joinRequests prop:', joinRequests);
-  console.log('AdminPanel: joinRequests length:', joinRequests.length);
-  console.log('AdminPanel: currentUser role:', currentUser.role);
-  console.log('AdminPanel: currentUser organizationId:', currentUser.organizationId);
-
   const [activeTab, setActiveTab] = useState<'INBOX' | 'USERS' | 'TEAMS' | 'ORG_SETTINGS' | 'API_KEY'>('INBOX');
   const [taskRequests, setTaskRequests] = useState<TaskAssignmentRequest[]>([]);
   const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -265,14 +260,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleAddUserToTeam = async (user: User, teamId: string) => {
       if (!teamId) return;
-      if (user.teamIds.includes(teamId)) return;
-      const updatedUser = { ...user, teamIds: [...user.teamIds, teamId] };
+      if (!user.id) {
+          console.error('Cannot add user to team: user.id is undefined', user);
+          return;
+      }
+      const currentTeamIds = user.teamIds || [];
+      if (currentTeamIds.includes(teamId)) return;
+      const updatedUser = { ...user, teamIds: [...currentTeamIds, teamId] };
       onUpdateUser(updatedUser);
       setActiveAddTeamDropdown(null);
   };
 
   const handleRemoveUserFromTeam = async (user: User, teamIdToRemove: string) => {
-      const updatedUser = { ...user, teamIds: user.teamIds.filter(id => id !== teamIdToRemove) };
+      if (!user.id) {
+          console.error('Cannot remove user from team: user.id is undefined', user);
+          return;
+      }
+      const currentTeamIds = user.teamIds || [];
+      const updatedUser = { ...user, teamIds: currentTeamIds.filter(id => id !== teamIdToRemove) };
       onUpdateUser(updatedUser);
   };
 

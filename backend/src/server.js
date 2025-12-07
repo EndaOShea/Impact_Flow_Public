@@ -23,6 +23,7 @@ import userRoutes from './routes/user.routes.js';
 import organizationRoutes from './routes/organization.routes.js';
 import teamRoutes from './routes/team.routes.js';
 import taskRoutes from './routes/task.routes.js';
+import taskAssignmentRoutes from './routes/taskAssignment.routes.js';
 
 // Import utilities
 import { cleanupExpiredSessions } from './utils/auth.js';
@@ -73,6 +74,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/teams', teamRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/task-assignment-requests', taskAssignmentRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
