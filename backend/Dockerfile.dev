@@ -1,0 +1,23 @@
+# Development Dockerfile for Impact Flow Backend (with hot-reload)
+FROM node:18-alpine
+
+# Install nodemon for hot-reload
+RUN npm install -g nodemon
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies (including dev dependencies)
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Expose backend port
+EXPOSE 2001
+
+# Start with nodemon for hot-reload
+CMD ["nodemon", "--watch", "src", "--ext", "js,json", "src/server.js"]

@@ -1,24 +1,21 @@
-
 import { GoogleGenAI } from "@google/genai";
+import { getApiKey } from "./apiKeyManager";
 
-// Ensure API key is available safely for browser environments
-let defaultApiKey = '';
-try {
-  // Check if process is defined (Node-like env)
-  if (typeof process !== 'undefined' && process.env) {
-    defaultApiKey = process.env.API_KEY || '';
+export async function generateDiagramCode(userDescription: string, userId: string, apiKeyOverride?: string): Promise<string> {
+  // Try to get user's encrypted API key first
+  let apiKey = apiKeyOverride;
+
+  if (!apiKey && userId) {
+    try {
+      apiKey = await getApiKey(userId);
+    } catch (error) {
+      console.error("Failed to retrieve API key:", error);
+    }
   }
-} catch (e) {
-  // process is not defined, ignore
-  console.warn("process.env not available");
-}
-
-export async function generateDiagramCode(userDescription: string, apiKeyOverride?: string): Promise<string> {
-  const apiKey = apiKeyOverride || defaultApiKey;
 
   if (!apiKey) {
     console.error("API Key missing");
-    return "graph TD; A[Error] --> B[Missing API Key];";
+    return "graph TD; A[Error] --> B[Missing API Key - Please add your key in Admin Panel];";
   }
 
   try {

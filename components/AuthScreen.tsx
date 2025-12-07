@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { Shield, Key, Lock, User as UserIcon, LogIn, RefreshCcw, Copy, Check, AlertCircle, Info, Eye, EyeOff } from 'lucide-react';
-import { db } from '../services/db';
+import { api } from '../services/api';
 
 interface AuthScreenProps {
   users: User[];
@@ -45,14 +45,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ users, onLogin }) => {
     setIsLoading(true);
 
     try {
-        const user = await db.authenticate(username, password);
+        const user = await api.authenticate(username, password);
         if (user) {
             onLogin(user);
         } else {
             setError('Invalid username or password.');
         }
-    } catch (err) {
-        setError('Authentication error occurred.');
+    } catch (err: any) {
+        setError(err.message || 'Authentication error occurred.');
         console.error(err);
     } finally {
         setIsLoading(false);
@@ -80,26 +80,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ users, onLogin }) => {
 
     setIsLoading(true);
     try {
-        const newKey = generateRecoveryKey();
-        const initials = username.slice(0, 2).toUpperCase();
-        
-        const newUser: Partial<User> = {
-          username: username,
-          name: username, 
-          role: UserRole.USER, 
-          avatarInitials: initials,
-          recoveryKey: newKey
-        };
-
-        // DB Service handles hashing
-        await db.createUser(newUser, password);
-        setGeneratedKey(newKey);
+        // API Service handles hashing and recovery key generation
+        const response = await api.register(username, password, username);
+        setGeneratedKey(response.recoveryKey);
 
     } catch (err: any) {
-        if(err.message === 'Username already exists') {
+        if(err.message && err.message.includes('already exists')) {
             setError('Username already taken.');
         } else {
-            setError('Registration failed.');
+            setError(err.message || 'Registration failed.');
         }
     } finally {
         setIsLoading(false);
@@ -108,8 +97,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ users, onLogin }) => {
 
   const handleCompleteRegistration = async () => {
     // Auto-login after registration key is acknowledged
-    const user = await db.authenticate(username, password);
-    if (user) onLogin(user);
+    try {
+        const user = await api.authenticate(username, password);
+        if (user) onLogin(user);
+    } catch (err) {
+        console.error('Auto-login failed:', err);
+        setError('Registration successful. Please log in manually.');
+    }
   };
 
   const handleRecovery = async (e: React.FormEvent) => {
@@ -130,14 +124,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ users, onLogin }) => {
     }
 
     try {
-        const user = await db.resetPassword(recoveryKeyInput.trim(), password);
+        const user = await api.resetPassword(recoveryKeyInput.trim(), password);
         if (user) {
             onLogin(user);
         } else {
             setError('Invalid Recovery Key.');
         }
-    } catch (err) {
-        setError('Recovery failed.');
+    } catch (err: any) {
+        setError(err.message || 'Recovery failed.');
     } finally {
         setIsLoading(false);
     }

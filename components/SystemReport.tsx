@@ -6,11 +6,11 @@ import {
     DollarSign, BarChart2, PieChart as PieChartIcon, ArrowUpRight, ArrowDownRight,
     PlayCircle, Mail, Plus, Trash, Clock as ClockIcon, CalendarDays, Repeat, Info, HelpCircle, Check
 } from 'lucide-react';
-import { 
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
-    PieChart, Pie, Cell 
+import {
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+    PieChart, Pie, Cell
 } from 'recharts';
-import { db } from '../services/db';
+import { api } from '../services/api';
 
 interface SystemReportProps {
   tasks: Task[];
@@ -61,8 +61,12 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
   }, []);
 
   const loadSchedules = async () => {
-      const items = await db.getReportSchedules();
-      setSchedules(items);
+      try {
+          const items = await api.getReportSchedules();
+          setSchedules(items);
+      } catch (err) {
+          console.error('Failed to load report schedules:', err);
+      }
   };
 
   const handleCreateSchedule = async () => {
@@ -115,21 +119,29 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
           active: true
       };
       
-      await db.createReportSchedule(newSchedule);
-      setIsCreatingSchedule(false);
-      
-      // Reset Form
-      setSchedName('');
-      setSchedFreq('WEEKLY');
-      setSchedWeekDays([]);
-      setDailyScope('YESTERDAY');
-      
-      loadSchedules();
+      try {
+          await api.createReportSchedule(newSchedule);
+          setIsCreatingSchedule(false);
+
+          // Reset Form
+          setSchedName('');
+          setSchedFreq('WEEKLY');
+          setSchedWeekDays([]);
+          setDailyScope('YESTERDAY');
+
+          loadSchedules();
+      } catch (err) {
+          console.error('Failed to create report schedule:', err);
+      }
   };
 
   const handleDeleteSchedule = async (id: string) => {
-      await db.deleteReportSchedule(id);
-      loadSchedules();
+      try {
+          await api.deleteReportSchedule(id);
+          loadSchedules();
+      } catch (err) {
+          console.error('Failed to delete report schedule:', err);
+      }
   };
 
   const toggleWeekDay = (dayIdx: number) => {

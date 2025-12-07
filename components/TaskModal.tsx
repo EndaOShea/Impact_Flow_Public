@@ -1,11 +1,11 @@
 
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-    X, Plus, Trash, Wand2, CheckCircle2, Circle, ChevronDown, ChevronRight, 
-    BarChart2, Upload, Paperclip, 
-    Calendar, Flag, Clock, Bell, Link as LinkIcon, MessageSquare, 
-    Zap, Target, History, GitGraph
+import {
+    X, Plus, Trash, Wand2, CheckCircle2, Circle, ChevronDown, ChevronRight,
+    BarChart2, Upload, Paperclip,
+    Calendar, Flag, Clock, Bell, Link as LinkIcon, MessageSquare,
+    Zap, Target, History, GitGraph, ArrowUpDown, UserPlus
 } from 'lucide-react';
 import { Task, Subtask, ImpactMetric, TaskStatus, ImpactType, WorkCategory, Attachment, Priority, Comment, AutomationRule, User, UserRole, Team } from '../types';
 import { generateDiagramCode } from '../services/gemini';
@@ -53,6 +53,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [dueDate, setDueDate] = useState<string>('');
   const [assigneeId, setAssigneeId] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceFrequency, setRecurrenceFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'>('WEEKLY');
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [recurrenceWeekDays, setRecurrenceWeekDays] = useState<number[]>([]);
   
   // Lists
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
@@ -89,13 +92,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   
   // Filter Assignable Users based on Team and Permissions
   const assignableUsers = useMemo(() => {
-    // 1. Owners/Admins can assign to anyone
-    if (currentUser.role === UserRole.OWNER || currentUser.role === UserRole.ADMIN) {
-        return users;
-    }
-
     const myTeamIds = currentUser.teamIds || [];
-    
+
     // Rank Helper: Higher number = Higher Rank
     const getRank = (r: UserRole) => {
         if (r === UserRole.OWNER) return 3;
@@ -103,22 +101,33 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         if (r === UserRole.TEAM_ADMIN) return 1;
         return 0; // USER
     };
-    
+
     const myRank = getRank(currentUser.role);
 
     return users.filter(u => {
         // Always include self
         if (u.id === currentUser.id) return true;
-        
+
         // Must be in one of my teams
         const userTeams = u.teamIds || [];
         const inMyTeam = userTeams.some(tid => myTeamIds.includes(tid));
         if (!inMyTeam) return false;
 
+        // Owners/Admins can assign to anyone in their teams
+        if (currentUser.role === UserRole.OWNER || currentUser.role === UserRole.ADMIN) {
+            return true;
+        }
+
         // Must have rank <= my rank (Can assign to peers or subordinates)
         return getRank(u.role) <= myRank;
     });
   }, [users, currentUser]);
+
+  // Filter teams to only show teams the current user belongs to
+  const assignableTeams = useMemo(() => {
+    const myTeamIds = currentUser.teamIds || [];
+    return teams.filter(team => myTeamIds.includes(team.id));
+  }, [teams, currentUser]);
 
   // Determine available statuses
   // "When creating a new task only TODO and IN PROGRESS should be available."
@@ -147,6 +156,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setAssigneeId(assignees[0] || '');
         
         setIsRecurring(taskToEdit.isRecurring);
+        if (taskToEdit.recurrenceConfig) {
+            setRecurrenceFrequency(taskToEdit.recurrenceConfig.frequency);
+            setRecurrenceInterval(taskToEdit.recurrenceConfig.interval);
+            setRecurrenceWeekDays(taskToEdit.recurrenceConfig.weekDays || []);
+        }
         setSubtasks([...(taskToEdit.subtasks || [])]);
         setImpactMetrics([...(taskToEdit.impactMetrics || []).map(m => ({ ...m, currency: m.currency || 'USD' }))]);
         setAttachments([...(taskToEdit.attachments || [])]);
@@ -178,6 +192,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setDueDate('');
         setAssigneeId(currentUser.id); // Default to self
         setIsRecurring(false);
+        setRecurrenceFrequency('WEEKLY');
+        setRecurrenceInterval(1);
+        setRecurrenceWeekDays([]);
         setSubtasks([]);
         setImpactMetrics([]);
         setAttachments([]);
@@ -219,6 +236,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   };
 
   const handleUpdateSubtask = (id: string, updates: Partial<Subtask>) => {
+    // If trying to complete a subtask, ensure actual hours are entered
+    if (updates.completed === true && taskToEdit) {
+      const subtask = subtasks.find(s => s.id === id);
+      if (subtask && (!subtask.hoursSpent || subtask.hoursSpent === 0)) {
+        alert('Please enter Actual Hours before marking this step as completed.');
+        return;
+      }
+    }
     setSubtasks(subtasks.map(s => s.id === id ? { ...s, ...updates } : s));
   };
 
@@ -297,7 +322,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const handleGenerateDiagram = async () => {
     if (!diagramPrompt.trim()) return;
     setIsGeneratingDiagram(true);
-    const code = await generateDiagramCode(diagramPrompt);
+    const code = await generateDiagramCode(diagramPrompt, currentUser.id);
     setDiagramCode(code);
     setIsGeneratingDiagram(false);
   };
@@ -314,7 +339,16 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   const handleSave = () => {
     if (!title.trim()) return;
-    
+
+    // Validate that all subtasks have estimated hours when creating a new task
+    if (!taskToEdit && subtasks.length > 0) {
+      const missingEstimates = subtasks.filter(s => !s.estimatedHours || s.estimatedHours === 0);
+      if (missingEstimates.length > 0) {
+        alert(`Please enter Estimated Hours for all subtasks before creating the task. ${missingEstimates.length} step(s) missing estimates.`);
+        return;
+      }
+    }
+
     const newTask: Task = {
       id: taskToEdit ? taskToEdit.id : crypto.randomUUID(),
       organizationId: taskToEdit?.organizationId || currentUser.organizationId || 'temp',
@@ -328,6 +362,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       creatorId: taskToEdit?.creatorId || currentUser.id,
       adminIds: taskToEdit?.adminIds || [currentUser.id],
       isRecurring,
+      recurrenceConfig: isRecurring ? {
+        frequency: recurrenceFrequency,
+        interval: recurrenceInterval,
+        weekDays: recurrenceFrequency === 'WEEKLY' ? recurrenceWeekDays : undefined
+      } : undefined,
       dependencyIds,
       createdAt: taskToEdit ? taskToEdit.createdAt : new Date(),
       completedAt: status === TaskStatus.COMPLETED && (!taskToEdit || taskToEdit.status !== TaskStatus.COMPLETED) ? new Date() : undefined,
@@ -362,7 +401,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       assigneeIds: assigneeId ? [assigneeId] : [],
       creatorId: currentUser.id,
       adminIds: [currentUser.id],
-      isRecurring, dependencyIds,
+      isRecurring,
+      recurrenceConfig: isRecurring ? {
+        frequency: recurrenceFrequency,
+        interval: recurrenceInterval,
+        weekDays: recurrenceFrequency === 'WEEKLY' ? recurrenceWeekDays : undefined
+      } : undefined,
+      dependencyIds,
       createdAt: new Date(),
       subtasks, impactMetrics, attachments, comments,
       automations, 
@@ -780,28 +825,59 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                             <div className="grid grid-cols-2 gap-2">
                                                 <div>
                                                     <label className="text-xs font-medium text-slate-500">Est. Hours</label>
-                                                    <input type="number" min="0" step="0.5" value={subtask.estimatedHours || 0} onChange={(e) => handleUpdateSubtask(subtask.id, { estimatedHours: parseFloat(e.target.value) || 0 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white" />
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.5"
+                                                        value={subtask.estimatedHours || 0}
+                                                        onChange={(e) => handleUpdateSubtask(subtask.id, { estimatedHours: parseFloat(e.target.value) || 0 })}
+                                                        disabled={!!taskToEdit}
+                                                        className={`w-full text-xs border border-slate-200 rounded px-2 py-1.5 ${taskToEdit ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'}`}
+                                                    />
                                                 </div>
                                                 <div>
                                                     <label className="text-xs font-medium text-slate-500">Actual Hours</label>
-                                                    <input type="number" min="0" step="0.5" value={subtask.hoursSpent} onChange={(e) => handleUpdateSubtask(subtask.id, { hoursSpent: parseFloat(e.target.value) || 0 })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white" />
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.5"
+                                                        value={subtask.hoursSpent}
+                                                        onChange={(e) => handleUpdateSubtask(subtask.id, { hoursSpent: parseFloat(e.target.value) || 0 })}
+                                                        disabled={!taskToEdit}
+                                                        className={`w-full text-xs border border-slate-200 rounded px-2 py-1.5 ${!taskToEdit ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'}`}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex flex-col h-full">
-                                            <label className="text-xs font-medium text-slate-500 mb-1">Notes</label>
-                                            <textarea value={subtask.notes} onChange={(e) => handleUpdateSubtask(subtask.id, { notes: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-slate-50 flex-1 resize-none" placeholder="Details..." />
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <input
-                                                    type="checkbox"
-                                                    id={`milestone-${subtask.id}`}
-                                                    checked={subtask.isMilestone || false}
-                                                    onChange={(e) => handleUpdateSubtask(subtask.id, { isMilestone: e.target.checked })}
-                                                    className="w-3 h-3 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer bg-white"
-                                                />
-                                                <label htmlFor={`milestone-${subtask.id}`} className="text-xs font-medium text-slate-600 cursor-pointer flex items-center gap-1 select-none">
-                                                    <Flag className="w-3 h-3 text-purple-600" /> Mark as Key Milestone
-                                                </label>
+                                        <div className="flex flex-col h-full space-y-2">
+                                            <div className="flex-1">
+                                                <label className="text-xs font-medium text-slate-500 mb-1 block">Notes</label>
+                                                <textarea value={subtask.notes} onChange={(e) => handleUpdateSubtask(subtask.id, { notes: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-slate-50 h-20 resize-none" placeholder="Details..." />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id={`milestone-${subtask.id}`}
+                                                        checked={subtask.isMilestone || false}
+                                                        onChange={(e) => handleUpdateSubtask(subtask.id, { isMilestone: e.target.checked })}
+                                                        className="w-3 h-3 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer bg-white"
+                                                    />
+                                                    <label htmlFor={`milestone-${subtask.id}`} className="text-xs font-medium text-slate-600 cursor-pointer flex items-center gap-1 select-none">
+                                                        <Flag className="w-3 h-3 text-purple-600" /> Mark as Key Milestone
+                                                    </label>
+                                                </div>
+                                                {subtask.isMilestone && (
+                                                    <div className="pl-5 animate-in fade-in slide-in-from-top-1">
+                                                        <input
+                                                            type="text"
+                                                            value={subtask.milestoneDescription || ''}
+                                                            onChange={(e) => handleUpdateSubtask(subtask.id, { milestoneDescription: e.target.value })}
+                                                            placeholder="e.g., Completed primary tasks, Setup stages complete..."
+                                                            className="w-full text-xs border border-purple-200 rounded px-2 py-1.5 bg-purple-50 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -819,45 +895,49 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     <div className="grid grid-cols-2 gap-3">
                         <div>
                             <label className="text-xs font-medium text-slate-600 mb-1 block">Start Date</label>
-                            <div className="relative">
-                                <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                                <input 
-                                    type="date" 
-                                    value={startDate} 
-                                    onChange={(e) => setStartDate(e.target.value)} 
-                                    onClick={handleSafeShowPicker}
-                                    disabled={!canEditSensitive}
-                                    className="w-full text-xs border border-slate-300 rounded bg-white pl-9 pr-2 py-2 disabled:opacity-70 disabled:bg-slate-100 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none" 
-                                />
-                            </div>
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => {
+                                    setStartDate(e.target.value);
+                                    // If due date is before new start date, adjust it
+                                    if (dueDate && e.target.value && dueDate < e.target.value) {
+                                        setDueDate(e.target.value);
+                                    }
+                                }}
+                                onClick={handleSafeShowPicker}
+                                disabled={!canEditSensitive}
+                                className="w-full text-xs border border-slate-300 rounded bg-white px-3 py-2 disabled:opacity-70 disabled:bg-slate-100 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
                         </div>
                         <div>
                             <label className="text-xs font-medium text-slate-600 mb-1 block">Due Date</label>
-                            <div className="relative">
-                                <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                                <input 
-                                    type="date" 
-                                    value={dueDate} 
-                                    onChange={(e) => setDueDate(e.target.value)} 
-                                    onClick={handleSafeShowPicker}
-                                    disabled={!canEditSensitive}
-                                    className="w-full text-xs border border-slate-300 rounded bg-white pl-9 pr-2 py-2 disabled:opacity-70 disabled:bg-slate-100 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none" 
-                                />
-                            </div>
+                            <input
+                                type="date"
+                                value={dueDate}
+                                onChange={(e) => setDueDate(e.target.value)}
+                                onClick={handleSafeShowPicker}
+                                min={startDate || undefined}
+                                disabled={!canEditSensitive}
+                                className="w-full text-xs border border-slate-300 rounded bg-white px-3 py-2 disabled:opacity-70 disabled:bg-slate-100 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
                         </div>
                     </div>
 
                     <div>
-                         <label className="text-xs font-medium text-slate-600 mb-1 block">Assignee</label>
+                         <label className="text-xs font-medium text-slate-600 mb-1 block flex items-center gap-1">
+                            <UserPlus className="w-3.5 h-3.5" />
+                            Assignee
+                         </label>
                          <div className="flex items-center gap-2 bg-white border border-slate-300 rounded p-1.5 relative">
-                            <select 
-                                value={assigneeId} 
+                            <select
+                                value={assigneeId}
                                 onChange={(e) => setAssigneeId(e.target.value)}
-                                disabled={!canEditSensitive} 
+                                disabled={!canEditSensitive}
                                 className="bg-transparent text-sm w-full outline-none disabled:cursor-not-allowed disabled:text-slate-500 p-1 cursor-pointer"
                             >
                                 <option value="">Select User...</option>
-                                {teams.map(team => (
+                                {assignableTeams.map(team => (
                                     <optgroup key={team.id} label={team.name}>
                                         {assignableUsers.filter(u => u.teamIds && u.teamIds.includes(team.id)).map(user => (
                                             <option key={user.id} value={user.id}>{user.name}</option>
@@ -872,6 +952,87 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                             </select>
                          </div>
                          {!canEditSensitive && <p className="text-[10px] text-slate-400 mt-1">Only Admins can change assignees on existing tasks.</p>}
+                    </div>
+
+                    {/* Recurring Task Configuration */}
+                    <div className="border-t border-slate-200 pt-4">
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={isRecurring}
+                                onChange={(e) => setIsRecurring(e.target.checked)}
+                                disabled={!canEditSensitive}
+                                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                            />
+                            <ArrowUpDown className="w-4 h-4" />
+                            Make this a recurring task
+                        </label>
+
+                        {isRecurring && (
+                            <div className="space-y-3 pl-6 animate-in fade-in slide-in-from-top-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-xs text-slate-500 mb-1 block">Frequency</label>
+                                        <select
+                                            value={recurrenceFrequency}
+                                            onChange={(e) => setRecurrenceFrequency(e.target.value as any)}
+                                            disabled={!canEditSensitive}
+                                            className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        >
+                                            <option value="DAILY">Daily</option>
+                                            <option value="WEEKLY">Weekly</option>
+                                            <option value="MONTHLY">Monthly</option>
+                                            <option value="YEARLY">Yearly</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-slate-500 mb-1 block">Every</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max="99"
+                                            value={recurrenceInterval}
+                                            onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
+                                            disabled={!canEditSensitive}
+                                            className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                {recurrenceFrequency === 'WEEKLY' && (
+                                    <div>
+                                        <label className="text-xs text-slate-500 mb-2 block">Days of Week</label>
+                                        <div className="grid grid-cols-7 gap-1">
+                                            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                                                <button
+                                                    key={index}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (recurrenceWeekDays.includes(index)) {
+                                                            setRecurrenceWeekDays(recurrenceWeekDays.filter(d => d !== index));
+                                                        } else {
+                                                            setRecurrenceWeekDays([...recurrenceWeekDays, index].sort());
+                                                        }
+                                                    }}
+                                                    disabled={!canEditSensitive}
+                                                    className={`text-xs py-1.5 rounded font-medium transition-colors ${
+                                                        recurrenceWeekDays.includes(index)
+                                                            ? 'bg-blue-600 text-white'
+                                                            : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-50'
+                                                    }`}
+                                                >
+                                                    {day}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <p className="text-[10px] text-slate-500 italic">
+                                    When completed, a new instance will be created automatically.
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     <div>

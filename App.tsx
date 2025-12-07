@@ -14,7 +14,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { Onboarding } from './components/Onboarding';
 import { PlatformAdminPanel } from './components/PlatformAdminPanel';
 import { Task, TaskStatus, Priority, User, UserRole, Team, ViewState, JoinRequest, Organization, WorkCategory } from './types';
-import { db } from './services/db';
+import { api } from './services/api';
 
 export const App: React.FC = () => {
   // --- AUTH & DATA STATE ---
@@ -76,18 +76,17 @@ export const App: React.FC = () => {
   // --- INITIALIZATION ---
   useEffect(() => {
     const init = async () => {
-        await db.init();
-        const storedUser = localStorage.getItem('impactflow_current_user');
-        if (storedUser) {
-            const user = JSON.parse(storedUser);
-            // Verify session validity by fetching fresh user data
-            const allUsers = await db.getUsers();
-            const validUser = allUsers.find(u => u.id === user.id);
-            if (validUser) {
+        const user = api.init();
+        if (user) {
+            try {
+                // Verify session validity by fetching current user from API
+                const validUser = await api.getCurrentUser();
                 setCurrentUser(validUser);
-                loadUserPreferences(validUser.id); // Load prefs on auto-login
+                loadUserPreferences(validUser.id);
                 refreshData(validUser);
-            } else {
+            } catch (error) {
+                console.error('Session validation failed:', error);
+                api.logout();
                 localStorage.removeItem('impactflow_current_user');
             }
         }
@@ -97,14 +96,14 @@ export const App: React.FC = () => {
 
   const refreshData = async (user: User = currentUser!) => {
     if (!user) return;
-    
+
     // FETCH ALL DATA
     const [allTasks, allUsers, allTeams, allReqs, allOrgs] = await Promise.all([
-        db.getTasks(),
-        db.getUsers(),
-        db.getTeams(),
-        db.getJoinRequests(),
-        db.getOrganizations()
+        api.getTasks(),
+        api.getUsers(),
+        api.getTeams(),
+        api.getJoinRequests(),
+        api.getOrganizations()
     ]);
 
     // FILTER BY ORGANIZATION (Multi-Tenancy)
@@ -310,7 +309,7 @@ export const App: React.FC = () => {
          const config = updatedTask.recurrenceConfig;
          let nextStartDate = new Date(updatedTask.startDate || new Date());
          let nextDueDate = updatedTask.dueDate ? new Date(updatedTask.dueDate) : undefined;
-         
+
          const addInterval = (date: Date) => {
              const d = new Date(date);
              if (config.frequency === 'DAILY') d.setDate(d.getDate() + config.interval);
@@ -336,11 +335,15 @@ export const App: React.FC = () => {
              comments: [],
              activityLog: []
          };
-         
-         await db.saveTask(nextTask);
+
+         await api.createTask(nextTask);
     }
 
-    await db.saveTask(updatedTask);
+    if (updatedTask.id) {
+        await api.updateTask(updatedTask.id, updatedTask);
+    } else {
+        await api.createTask(updatedTask);
+    }
     refreshData();
   };
 
@@ -353,17 +356,17 @@ export const App: React.FC = () => {
           name: newTeamName,
           color: colors[Math.floor(Math.random() * colors.length)]
       };
-      
-      await db.createTeam(newTeam);
-      
+
+      await api.createTeam(newTeam);
+
       const updatedUser = {
           ...currentUser,
           teamIds: [...currentUser.teamIds, newTeam.id],
           role: currentUser.role === UserRole.USER ? UserRole.ADMIN : currentUser.role
       };
-      await db.updateUser(updatedUser);
-      setCurrentUser(updatedUser); 
-      
+      await api.updateUser(updatedUser.id, updatedUser);
+      setCurrentUser(updatedUser);
+
       setNewTeamName('');
       setShowCreateTeamModal(false);
       refreshData(updatedUser);
@@ -777,16 +780,16 @@ export const App: React.FC = () => {
             
             {view === 'ADMIN' && isWorkspaceAdmin && (
                 <div className="animate-in fade-in">
-                    <AdminPanel 
-                        currentUser={currentUser} 
-                        users={users} 
-                        teams={teams} 
+                    <AdminPanel
+                        currentUser={currentUser}
+                        users={users}
+                        teams={teams}
                         joinRequests={joinRequests}
-                        onAddUser={async (u, p) => { await db.createUser(u, p); refreshData(); }}
-                        onRemoveUser={async (id) => { await db.deleteUser(id); refreshData(); }}
-                        onUpdateUser={async (u) => { await db.updateUser(u); refreshData(); }}
-                        onAddTeam={async (t) => { await db.createTeam(t); refreshData(); }}
-                        onRemoveTeam={async (id) => { await db.deleteTeam(id); refreshData(); }}
+                        onAddUser={async (u, p) => { await api.createUser(u, p); refreshData(); }}
+                        onRemoveUser={async (id) => { await api.deleteUser(id); refreshData(); }}
+                        onUpdateUser={async (u) => { await api.updateUser(u.id, u); refreshData(); }}
+                        onAddTeam={async (t) => { await api.createTeam(t); refreshData(); }}
+                        onRemoveTeam={async (id) => { await api.deleteTeam(id); refreshData(); }}
                         onRefresh={() => refreshData()}
                     />
                 </div>

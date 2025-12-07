@@ -114,6 +114,7 @@ export interface Subtask {
   category: WorkCategory;
   notes: string;
   isMilestone?: boolean;
+  milestoneDescription?: string; // Description of what the milestone represents
 }
 
 export interface ImpactMetric {

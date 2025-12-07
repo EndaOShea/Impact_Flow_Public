@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, Organization, JoinRequest } from '../types';
-import { db } from '../services/db';
+import { api } from '../services/api';
 import { Building2, Plus, Search, LogOut, CheckCircle2, ArrowRight, X } from 'lucide-react';
 
 interface OnboardingProps {
@@ -21,17 +21,25 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete, onLogo
 
     useEffect(() => {
         const checkPending = async () => {
-            const reqs = await db.getJoinRequests();
-            const myPending = reqs.filter(r => r.userId === user.id && r.status === 'PENDING');
-            if (myPending.length > 0) {
-                setPendingRequests(myPending);
-                setStep('PENDING');
+            try {
+                const reqs = await api.getJoinRequests();
+                const myPending = reqs.filter(r => r.userId === user.id && r.status === 'PENDING');
+                if (myPending.length > 0) {
+                    setPendingRequests(myPending);
+                    setStep('PENDING');
+                }
+            } catch (err) {
+                console.error('Failed to check pending requests:', err);
             }
         };
         const loadOrgs = async () => {
-            const orgs = await db.getOrganizations();
-            setAllOrgs(orgs);
-            setSearchResults(orgs.slice(0, 5)); // Initial view
+            try {
+                const orgs = await api.getOrganizations();
+                setAllOrgs(orgs);
+                setSearchResults(orgs.slice(0, 5)); // Initial view
+            } catch (err) {
+                console.error('Failed to load organizations:', err);
+            }
         };
         checkPending();
         loadOrgs();
@@ -51,10 +59,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete, onLogo
         if (!orgName.trim()) return;
         setIsSubmitting(true);
         try {
-            await db.createOrganization(orgName, user.id);
+            await api.createOrganization(orgName);
             // Reload user to get updated Org ID
-            const users = await db.getUsers();
-            const updated = users.find(u => u.id === user.id);
+            const updated = await api.getCurrentUser();
             if (updated) onComplete(updated);
         } catch (err) {
             console.error(err);
@@ -66,9 +73,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete, onLogo
     const handleJoinRequest = async (orgId: string) => {
         setIsSubmitting(true);
         try {
-            await db.requestJoin(user.id, orgId);
+            await api.requestJoin(orgId);
             setStep('PENDING');
-            const reqs = await db.getJoinRequests();
+            const reqs = await api.getJoinRequests();
             setPendingRequests(reqs.filter(r => r.userId === user.id && r.status === 'PENDING'));
         } catch (err) {
             alert("Request already pending");
@@ -80,8 +87,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete, onLogo
     const handleCancelRequest = async (reqId: string) => {
         setIsSubmitting(true);
         try {
-            await db.cancelJoinRequest(reqId);
-            const reqs = await db.getJoinRequests();
+            await api.cancelJoinRequest(reqId);
+            const reqs = await api.getJoinRequests();
             const myPending = reqs.filter(r => r.userId === user.id && r.status === 'PENDING');
             setPendingRequests(myPending);
             if (myPending.length === 0) {
@@ -188,7 +195,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete, onLogo
                                 </div>
                             ))}
                         </div>
-                        <button onClick={() => setStep('CHOICE')} className="mt-2 text-slate-400 text-sm hover:text-slate-600 block mx-auto">Back</button>
+                        <button onClick={() => setStep('CHOICE')} className="mt-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 block mx-auto">Back</button>
                     </div>
                 )}
 

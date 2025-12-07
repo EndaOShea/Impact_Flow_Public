@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Team, UserRole, JoinRequest, Organization, TaskAssignmentRequest } from '../types';
 import { Plus, Trash, Shield, ShieldAlert, Users, Briefcase, AlertCircle, Search, UserPlus, Inbox, Check, X, Building2, Key, Copy, CheckCircle2, ClipboardCheck, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react';
-import { db } from '../services/db';
+import { api } from '../services/api';
+import { ApiKeySettings } from './ApiKeySettings';
 
 interface AdminPanelProps {
   currentUser: User;
@@ -22,7 +23,7 @@ const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@
 export const AdminPanel: React.FC<AdminPanelProps> = ({ 
   currentUser, users, teams, joinRequests, onAddUser, onRemoveUser, onUpdateUser, onAddTeam, onRemoveTeam, onRefresh 
 }) => {
-  const [activeTab, setActiveTab] = useState<'INBOX' | 'USERS' | 'TEAMS'>('INBOX');
+  const [activeTab, setActiveTab] = useState<'INBOX' | 'USERS' | 'TEAMS' | 'API_KEY'>('INBOX');
   const [taskRequests, setTaskRequests] = useState<TaskAssignmentRequest[]>([]);
   
   // User Form State
@@ -95,15 +96,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   useEffect(() => {
       const loadRequests = async () => {
-          const reqs = await db.getTaskAssignmentRequests();
-          // Filter logic:
-          // If Owner/Admin -> See all pending
-          // If Team Admin -> See pending requests where targetUser is in MY team
-          const filtered = reqs.filter(r => r.status === 'PENDING').filter(r => {
-              if (isOwner || isAdmin) return true;
-              return currentUser.teamIds?.includes(r.targetTeamId);
-          });
-          setTaskRequests(filtered);
+          try {
+              const reqs = await api.getTaskAssignmentRequests();
+              // Filter logic:
+              // If Owner/Admin -> See all pending
+              // If Team Admin -> See pending requests where targetUser is in MY team
+              const filtered = reqs.filter(r => r.status === 'PENDING').filter(r => {
+                  if (isOwner || isAdmin) return true;
+                  return currentUser.teamIds?.includes(r.targetTeamId);
+              });
+              setTaskRequests(filtered);
+          } catch (err) {
+              console.error('Failed to load task assignment requests:', err);
+          }
       };
       loadRequests();
   }, [activeTab, currentUser]);
@@ -171,14 +176,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleProcessRequest = async (reqId: string, status: 'APPROVED' | 'REJECTED') => {
-      await db.processJoinRequest(reqId, status);
-      onRefresh(); // Replaces reload
+      try {
+          await api.processJoinRequest(reqId, status);
+          onRefresh(); // Replaces reload
+      } catch (err) {
+          console.error('Failed to process join request:', err);
+      }
   };
 
   const handleProcessTaskRequest = async (reqId: string, status: 'APPROVED' | 'REJECTED') => {
-      await db.processTaskAssignmentRequest(reqId, status);
-      // Refresh list
-      setTaskRequests(taskRequests.filter(r => r.id !== reqId));
+      try {
+          await api.processTaskAssignmentRequest(reqId, status);
+          // Refresh list
+          setTaskRequests(taskRequests.filter(r => r.id !== reqId));
+      } catch (err) {
+          console.error('Failed to process task assignment request:', err);
+      }
   };
 
   const handleAddUserToTeam = async (user: User, teamId: string) => {
@@ -236,11 +249,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Users className="w-4 h-4" /> {isTeamAdmin ? 'Team Members' : 'User Hierarchy'}
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('TEAMS')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'TEAMS' ? 'bg-purple-100 text-purple-700' : 'text-slate-500 hover:bg-slate-100'}`}
         >
           <Briefcase className="w-4 h-4" /> Team Structure
+        </button>
+        <button
+          onClick={() => setActiveTab('API_KEY')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${activeTab === 'API_KEY' ? 'bg-green-100 text-green-700' : 'text-slate-500 hover:bg-slate-100'}`}
+        >
+          <Key className="w-4 h-4" /> My API Key
         </button>
       </div>
 
@@ -628,6 +647,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {isTeamAdmin && teams.length === 0 && <p className="text-slate-400 text-sm">You are not assigned to any teams.</p>}
             </div>
          </div>
+      )}
+
+      {activeTab === 'API_KEY' && (
+        <div className="max-w-2xl">
+          <ApiKeySettings
+            userId={currentUser.id}
+            onApiKeyChange={() => {
+              // Optionally trigger a refresh or notification
+              console.log('API key updated');
+            }}
+          />
+        </div>
       )}
     </div>
   );

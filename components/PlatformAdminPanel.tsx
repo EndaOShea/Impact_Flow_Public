@@ -5,8 +5,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, Team, Task, SupportTicket, UserRole, Organization } from '../types';
 import { Users, Briefcase, Activity, Server, Shield, MessageSquare, CheckCircle, BarChart2, Plus, Trash, ShieldAlert, AlertCircle, Search, Settings, Database, Lock, LogOut } from 'lucide-react';
-import { db } from '../services/db';
-import { 
+import { api } from '../services/api';
+import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
 
@@ -44,31 +44,39 @@ export const PlatformAdminPanel: React.FC<PlatformAdminPanelProps> = ({ currentU
   }, []);
 
   const refreshData = async () => {
-    // We fetch tasks ONLY to count them for system load monitoring.
-    // The actual content is not stored in a way that can be rendered to the admin.
-    const [u, tm, tk, tix, o] = await Promise.all([
-        db.getUsers(),
-        db.getTeams(),
-        db.getTasks(),
-        db.getTickets(),
-        db.getOrganizations()
-    ]);
-    // Filter out System Admin from list so they can't delete themselves or see themselves in user list
-    setUsers(u.filter(user => user.role !== UserRole.SYSTEM_ADMIN));
-    setTeams(tm);
-    setTaskCount(tk.length); 
-    setTickets(tix);
-    setOrgs(o);
-    
-    // Initialize default org for team creation if needed
-    if (!newTeamOrgId && o.length > 0) {
-        setNewTeamOrgId(o[0].id);
+    try {
+        // We fetch tasks ONLY to count them for system load monitoring.
+        // The actual content is not stored in a way that can be rendered to the admin.
+        const [u, tm, tk, tix, o] = await Promise.all([
+            api.getUsers(),
+            api.getTeams(),
+            api.getTasks(),
+            api.getTickets(),
+            api.getOrganizations()
+        ]);
+        // Filter out System Admin from list so they can't delete themselves or see themselves in user list
+        setUsers(u.filter(user => user.role !== UserRole.SYSTEM_ADMIN));
+        setTeams(tm);
+        setTaskCount(tk.length);
+        setTickets(tix);
+        setOrgs(o);
+
+        // Initialize default org for team creation if needed
+        if (!newTeamOrgId && o.length > 0) {
+            setNewTeamOrgId(o[0].id);
+        }
+    } catch (err) {
+        console.error('Failed to refresh platform admin data:', err);
     }
   };
 
   const handleResolveTicket = async (id: string) => {
-      await db.resolveTicket(id);
-      refreshData();
+      try {
+          await api.resolveTicket(id);
+          refreshData();
+      } catch (err) {
+          console.error('Failed to resolve ticket:', err);
+      }
   };
 
   const handleCreateUser = async () => {
@@ -80,18 +88,10 @@ export const PlatformAdminPanel: React.FC<PlatformAdminPanelProps> = ({ currentU
         return;
     }
 
-    const initials = newUserName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-    
-    const userPayload: Partial<User> = {
-      username: newUserName.toLowerCase().replace(/\s/g, ''),
-      name: newUserName,
-      email: newUserEmail,
-      role: newUserRole,
-      avatarInitials: initials,
-    };
+    const username = newUserName.toLowerCase().replace(/\s/g, '');
 
     try {
-        await db.createUser(userPayload, newUserPassword);
+        await api.register(username, newUserPassword, newUserName, newUserEmail);
         setNewUserName('');
         setNewUserEmail('');
         setNewUserPassword('');
@@ -103,33 +103,49 @@ export const PlatformAdminPanel: React.FC<PlatformAdminPanelProps> = ({ currentU
 
   const handleDeleteUser = async (id: string) => {
       if (confirm('Are you sure? This cannot be undone.')) {
-          await db.deleteUser(id);
-          refreshData();
+          try {
+              await api.deleteUser(id);
+              refreshData();
+          } catch (err) {
+              console.error('Failed to delete user:', err);
+          }
       }
   };
 
   const handleToggleAdmin = async (user: User) => {
-      const newRole = user.role === UserRole.ADMIN ? UserRole.USER : UserRole.ADMIN;
-      await db.updateUser({ ...user, role: newRole });
-      refreshData();
+      try {
+          const newRole = user.role === UserRole.ADMIN ? UserRole.USER : UserRole.ADMIN;
+          await api.updateUser(user.id, { ...user, role: newRole });
+          refreshData();
+      } catch (err) {
+          console.error('Failed to update user role:', err);
+      }
   };
 
   const handleCreateTeam = async () => {
     if (!newTeamName || !newTeamOrgId) return;
     const colors = ['bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 'bg-pink-500'];
-    await db.createTeam({
-      id: crypto.randomUUID(),
-      organizationId: newTeamOrgId,
-      name: newTeamName,
-      color: colors[Math.floor(Math.random() * colors.length)]
-    });
-    setNewTeamName('');
-    refreshData();
+    try {
+        await api.createTeam({
+          id: crypto.randomUUID(),
+          organizationId: newTeamOrgId,
+          name: newTeamName,
+          color: colors[Math.floor(Math.random() * colors.length)]
+        });
+        setNewTeamName('');
+        refreshData();
+    } catch (err) {
+        console.error('Failed to create team:', err);
+    }
   };
 
   const handleDeleteTeam = async (id: string) => {
-    await db.deleteTeam(id);
-    refreshData();
+    try {
+        await api.deleteTeam(id);
+        refreshData();
+    } catch (err) {
+        console.error('Failed to delete team:', err);
+    }
   };
 
   // --- STATS CALCULATION ---
