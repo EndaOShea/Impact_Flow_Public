@@ -11,9 +11,7 @@ export const pool = new Pool({
     max: 20, // Maximum number of connections
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
-    ssl: process.env.NODE_ENV === 'production' ? {
-        rejectUnauthorized: false // For managed services like Heroku, Railway
-    } : false
+    ssl: false // SSL disabled - containers communicate on internal Docker network
 });
 
 // Test database connection on startup

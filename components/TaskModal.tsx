@@ -1,15 +1,11 @@
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     X, Plus, Trash, Wand2, CheckCircle2, Circle, ChevronDown, ChevronRight,
     BarChart2, Upload, Paperclip,
     Calendar, Flag, Clock, Bell, Link as LinkIcon, MessageSquare,
-    Zap, Target, History, GitGraph, ArrowUpDown, UserPlus
+    Zap, Target, History, ArrowUpDown
 } from 'lucide-react';
-import { Task, Subtask, ImpactMetric, TaskStatus, ImpactType, WorkCategory, Attachment, Priority, Comment, AutomationRule, User, UserRole, Team } from '../types';
-import { generateDiagramCode } from '../services/gemini';
-import { MermaidDiagram } from './MermaidDiagram';
+import { Task, Subtask, ImpactMetric, TaskStatus, ImpactType, WorkCategory, Attachment, Priority, Comment, AutomationRule, User } from '../types';
 import { TaskReport } from './TaskReport';
 
 interface TaskModalProps {
@@ -17,15 +13,12 @@ interface TaskModalProps {
   onClose: () => void;
   onSave: (task: Task) => void;
   taskToEdit?: Task;
-  allTasks?: Task[]; // For dependencies
+  allTasks?: Task[];
   currentUser: User;
-  users: User[];
-  teams: Team[];
 }
 
 type ModalTab = 'DETAILS' | 'STRATEGY' | 'COLLAB' | 'REPORT';
 
-// Helper to safely format dates for input fields
 const toDateString = (date?: Date | string) => {
     if (!date) return '';
     try {
@@ -37,26 +30,25 @@ const toDateString = (date?: Date | string) => {
     }
 };
 
-export const TaskModal: React.FC<TaskModalProps> = ({ 
-    isOpen, onClose, onSave, taskToEdit, allTasks = [], currentUser, users, teams 
+export const TaskModal: React.FC<TaskModalProps> = ({
+    isOpen, onClose, onSave, taskToEdit, allTasks = [], currentUser
 }) => {
   const [activeTab, setActiveTab] = useState<ModalTab>('DETAILS');
-  
+
   // Basic Info
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
   const [priority, setPriority] = useState<Priority>(Priority.MEDIUM);
-  
-  // Scheduling & People
+
+  // Scheduling
   const [startDate, setStartDate] = useState<string>('');
   const [dueDate, setDueDate] = useState<string>('');
-  const [assigneeId, setAssigneeId] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceFrequency, setRecurrenceFrequency] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'>('WEEKLY');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceWeekDays, setRecurrenceWeekDays] = useState<number[]>([]);
-  
+
   // Lists
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [impactMetrics, setImpactMetrics] = useState<ImpactMetric[]>([]);
@@ -64,7 +56,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [comments, setComments] = useState<Comment[]>([]);
   const [dependencyIds, setDependencyIds] = useState<string[]>([]);
   const [automations, setAutomations] = useState<AutomationRule[]>([]);
-  
+
   // Strategy
   const [okrs, setOkrs] = useState<string[]>([]);
   const [newOkrInput, setNewOkrInput] = useState('');
@@ -74,63 +66,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [impactNarrative, setImpactNarrative] = useState('');
   const [resourceLinks, setResourceLinks] = useState<{title: string, url: string}[]>([]);
 
-  // Diagram
-  const [diagramCode, setDiagramCode] = useState<string>('');
-  const [diagramPrompt, setDiagramPrompt] = useState('');
-  const [isGeneratingDiagram, setIsGeneratingDiagram] = useState(false);
-  
   // UI States
   const [expandedSubtaskId, setExpandedSubtaskId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [newCommentText, setNewCommentText] = useState('');
 
-  // Permission Logic
-  // Owners, Org Admins, and Team Admins can edit sensitive fields.
-  // Anyone creating a NEW task can also set these fields initially.
-  const isPrivileged = currentUser.role === UserRole.OWNER || currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.TEAM_ADMIN;
-  const canEditSensitive = isPrivileged || !taskToEdit;
-  
-  // Filter Assignable Users based on Team and Permissions
-  const assignableUsers = useMemo(() => {
-    const myTeamIds = currentUser.teamIds || [];
-
-    // Rank Helper: Higher number = Higher Rank
-    const getRank = (r: UserRole) => {
-        if (r === UserRole.OWNER) return 3;
-        if (r === UserRole.ADMIN) return 2;
-        if (r === UserRole.TEAM_ADMIN) return 1;
-        return 0; // USER
-    };
-
-    const myRank = getRank(currentUser.role);
-
-    return users.filter(u => {
-        // Always include self
-        if (u.id === currentUser.id) return true;
-
-        // Must be in one of my teams
-        const userTeams = u.teamIds || [];
-        const inMyTeam = userTeams.some(tid => myTeamIds.includes(tid));
-        if (!inMyTeam) return false;
-
-        // Owners/Admins can assign to anyone in their teams
-        if (currentUser.role === UserRole.OWNER || currentUser.role === UserRole.ADMIN) {
-            return true;
-        }
-
-        // Must have rank <= my rank (Can assign to peers or subordinates)
-        return getRank(u.role) <= myRank;
-    });
-  }, [users, currentUser]);
-
-  // Filter teams to only show teams the current user belongs to
-  const assignableTeams = useMemo(() => {
-    const myTeamIds = currentUser.teamIds || [];
-    return teams.filter(team => myTeamIds.includes(team.id));
-  }, [teams, currentUser]);
-
-  // Determine available statuses
-  // "When creating a new task only TODO and IN PROGRESS should be available."
   const availableStatuses = useMemo(() => {
       if (taskToEdit) {
           return Object.values(TaskStatus);
@@ -146,15 +86,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setDescription(taskToEdit.description);
         setStatus(taskToEdit.status);
         setPriority(taskToEdit.priority);
-        
-        // Use safe date parsing
         setStartDate(toDateString(taskToEdit.startDate));
         setDueDate(toDateString(taskToEdit.dueDate));
-        
-        // Safe assignee check
-        const assignees = Array.isArray(taskToEdit.assigneeIds) ? taskToEdit.assigneeIds : [];
-        setAssigneeId(assignees[0] || '');
-        
         setIsRecurring(taskToEdit.isRecurring);
         if (taskToEdit.recurrenceConfig) {
             setRecurrenceFrequency(taskToEdit.recurrenceConfig.frequency);
@@ -167,11 +100,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setComments([...(taskToEdit.comments || [])]);
         setDependencyIds([...(taskToEdit.dependencyIds || [])]);
         setAutomations([...(taskToEdit.automations || [])]);
-        
-        // Load OKRs: Use new array or fallback to old string (defensive check)
+
         const rawOkrs = taskToEdit.okrs;
-        const loadedOkrs = Array.isArray(rawOkrs) && rawOkrs.length > 0 
-            ? rawOkrs 
+        const loadedOkrs = Array.isArray(rawOkrs) && rawOkrs.length > 0
+            ? rawOkrs
             : (taskToEdit.okrAlignment ? [taskToEdit.okrAlignment] : []);
         setOkrs(loadedOkrs);
         setNewOkrInput('');
@@ -181,7 +113,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setAfterScenario(taskToEdit.afterScenario || '');
         setImpactNarrative(taskToEdit.impactNarrative || '');
         setResourceLinks([...(taskToEdit.resourceLinks || [])]);
-        setDiagramCode(taskToEdit.diagramCode || '');
       } else {
         // Reset for new task
         setTitle('');
@@ -190,7 +121,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setPriority(Priority.MEDIUM);
         setStartDate(new Date().toISOString().split('T')[0]);
         setDueDate('');
-        setAssigneeId(currentUser.id); // Default to self
         setIsRecurring(false);
         setRecurrenceFrequency('WEEKLY');
         setRecurrenceInterval(1);
@@ -200,10 +130,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setAttachments([]);
         setComments([]);
         setDependencyIds([]);
-        setAutomations([
-            { id: '1', trigger: 'Status to Review', action: 'Notify Designer', active: false },
-            { id: '2', trigger: 'Due Date Passed', action: 'Escalate Priority', active: false }
-        ]);
+        setAutomations([]);
         setOkrs([]);
         setNewOkrInput('');
         setMilestone(false);
@@ -211,11 +138,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setAfterScenario('');
         setImpactNarrative('');
         setResourceLinks([]);
-        setDiagramCode('');
-        setDiagramPrompt('');
       }
     }
-  }, [isOpen, taskToEdit, currentUser]);
+  }, [isOpen, taskToEdit]);
 
   const toggleSubtaskExpand = (id: string) => {
     setExpandedSubtaskId(expandedSubtaskId === id ? null : id);
@@ -236,7 +161,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   };
 
   const handleUpdateSubtask = (id: string, updates: Partial<Subtask>) => {
-    // If trying to complete a subtask, ensure actual hours are entered
     if (updates.completed === true && taskToEdit) {
       const subtask = subtasks.find(s => s.id === id);
       if (subtask && (!subtask.hoursSpent || subtask.hoursSpent === 0)) {
@@ -296,7 +220,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const handleDeleteAttachment = (id: string) => {
     setAttachments(attachments.filter(a => a.id !== id));
   };
-  
+
   const handleAddComment = () => {
       if(!newCommentText.trim()) return;
       const comment: Comment = {
@@ -319,28 +243,19 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setOkrs(okrs.filter((_, i) => i !== index));
   };
 
-  const handleGenerateDiagram = async () => {
-    if (!diagramPrompt.trim()) return;
-    setIsGeneratingDiagram(true);
-    const code = await generateDiagramCode(diagramPrompt, currentUser.id);
-    setDiagramCode(code);
-    setIsGeneratingDiagram(false);
-  };
-
   const handleSafeShowPicker = (e: React.MouseEvent<HTMLInputElement>) => {
       try {
           if (typeof e.currentTarget.showPicker === 'function') {
               e.currentTarget.showPicker();
           }
       } catch (err) {
-          // Ignore if not supported or failed
+          // Ignore if not supported
       }
   };
 
   const handleSave = () => {
     if (!title.trim()) return;
 
-    // Validate that all subtasks have estimated hours when creating a new task
     if (!taskToEdit && subtasks.length > 0) {
       const missingEstimates = subtasks.filter(s => !s.estimatedHours || s.estimatedHours === 0);
       if (missingEstimates.length > 0) {
@@ -350,17 +265,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     }
 
     const newTask: Task = {
-      id: taskToEdit ? taskToEdit.id : crypto.randomUUID(),
-      organizationId: taskToEdit?.organizationId || currentUser.organizationId || 'temp',
+      id: taskToEdit?.id || '',
       title,
       description,
       status,
       priority,
       startDate: startDate ? new Date(startDate) : undefined,
       dueDate: dueDate ? new Date(dueDate) : undefined,
-      assigneeIds: assigneeId ? [assigneeId] : [],
       creatorId: taskToEdit?.creatorId || currentUser.id,
-      adminIds: taskToEdit?.adminIds || [currentUser.id],
       isRecurring,
       recurrenceConfig: isRecurring ? {
         frequency: recurrenceFrequency,
@@ -375,17 +287,16 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       attachments,
       comments,
       automations,
-      okrAlignment: okrs.length > 0 ? okrs[0] : '', // Backward compat
+      okrAlignment: okrs.length > 0 ? okrs[0] : '',
       okrs,
       milestone,
       beforeScenario,
       afterScenario,
       impactNarrative,
       resourceLinks,
-      diagramCode,
       activityLog: taskToEdit?.activityLog || []
     };
-    
+
     onSave(newTask);
     onClose();
   };
@@ -394,13 +305,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   const currentTaskState: Task = {
       id: taskToEdit?.id || 'temp',
-      organizationId: currentUser.organizationId || 'temp',
       title, description, status, priority,
       startDate: startDate ? new Date(startDate) : undefined,
       dueDate: dueDate ? new Date(dueDate) : undefined,
-      assigneeIds: assigneeId ? [assigneeId] : [],
       creatorId: currentUser.id,
-      adminIds: [currentUser.id],
       isRecurring,
       recurrenceConfig: isRecurring ? {
         frequency: recurrenceFrequency,
@@ -410,40 +318,38 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       dependencyIds,
       createdAt: new Date(),
       subtasks, impactMetrics, attachments, comments,
-      automations, 
-      okrAlignment: okrs[0] || '', 
+      automations,
+      okrAlignment: okrs[0] || '',
       okrs,
       milestone,
       beforeScenario, afterScenario, impactNarrative,
-      resourceLinks, diagramCode,
+      resourceLinks,
       activityLog: []
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col border border-slate-200">
-        
+
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 bg-white z-10">
             <div className="flex justify-between items-start mb-4">
-                <input 
-                    type="text" 
+                <input
+                    type="text"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    // Only admins can rename EXISTING tasks, but ANYONE can name a NEW task
-                    disabled={!canEditSensitive && taskToEdit !== undefined} 
-                    className={`text-2xl font-bold text-slate-800 placeholder-slate-300 border-none focus:ring-0 p-0 w-full bg-transparent ${!canEditSensitive && taskToEdit ? 'cursor-not-allowed opacity-80' : ''}`}
+                    className="text-2xl font-bold text-slate-800 placeholder-slate-300 border-none focus:ring-0 p-0 w-full bg-transparent"
                     placeholder="Task Title"
                 />
                 <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
                     <X className="w-6 h-6" />
                 </button>
             </div>
-            
+
             <div className="flex items-center gap-4 flex-wrap">
                 {/* Status Dropdown */}
                 <div className="relative group">
-                    <select 
+                    <select
                         value={status}
                         onChange={(e) => setStatus(e.target.value as TaskStatus)}
                         className={`text-sm font-semibold pl-3 pr-8 py-1.5 rounded-full border-none focus:ring-2 focus:ring-offset-1 outline-none appearance-none cursor-pointer
@@ -456,14 +362,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     </select>
                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-current opacity-50 pointer-events-none" />
                 </div>
-                
+
                  {/* Priority Dropdown */}
                  <div className="relative group">
-                    <select 
+                    <select
                         value={priority}
                         onChange={(e) => setPriority(e.target.value as Priority)}
-                        disabled={!canEditSensitive}
-                        className={`text-sm font-semibold pl-3 pr-8 py-1.5 rounded-full border-none focus:ring-2 focus:ring-offset-1 outline-none appearance-none cursor-pointer disabled:cursor-not-allowed disabled:opacity-70
+                        className={`text-sm font-semibold pl-3 pr-8 py-1.5 rounded-full border-none focus:ring-2 focus:ring-offset-1 outline-none appearance-none cursor-pointer
                             ${priority === Priority.CRITICAL ? 'bg-red-100 text-red-700 focus:ring-red-500' :
                               priority === Priority.HIGH ? 'bg-orange-100 text-orange-700 focus:ring-orange-500' :
                               priority === Priority.MEDIUM ? 'bg-blue-50 text-blue-700 focus:ring-blue-500' :
@@ -477,25 +382,25 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 <div className="h-6 w-px bg-slate-200"></div>
 
                 <div className="flex bg-slate-100 p-1 rounded-lg overflow-x-auto">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('DETAILS')}
                         className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'DETAILS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Details
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('STRATEGY')}
                         className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'STRATEGY' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Strategy
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('COLLAB')}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'COLLAB' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
-                        Collab {comments.length > 0 && <span className="bg-blue-100 text-blue-700 text-xs px-1.5 rounded-full">{comments.length}</span>}
+                        Notes {comments.length > 0 && <span className="bg-blue-100 text-blue-700 text-xs px-1.5 rounded-full">{comments.length}</span>}
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('REPORT')}
                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'REPORT' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
@@ -507,7 +412,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
         {/* Content Scroll Area */}
         <div className="flex-1 overflow-y-auto bg-slate-50/50">
-          
+
           {/* TAB: REPORT */}
           {activeTab === 'REPORT' && (
              <div className="p-8">
@@ -515,10 +420,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
              </div>
           )}
 
-          {/* TAB: COLLABORATION */}
+          {/* TAB: NOTES/COLLAB */}
           {activeTab === 'COLLAB' && (
               <div className="p-8 max-w-4xl mx-auto space-y-6">
-                 {/* Attachments Section Moved Here */}
+                 {/* Attachments Section */}
                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -541,7 +446,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
                  {/* Links */}
                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><LinkIcon className="w-4 h-4" /> Workspace Resources</h3>
+                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><LinkIcon className="w-4 h-4" /> Resources</h3>
                     <div className="space-y-2">
                         {resourceLinks.map((link, idx) => (
                             <div key={idx} className="flex gap-2">
@@ -560,41 +465,38 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     </div>
                  </div>
 
-                 {/* Comments */}
+                 {/* Notes */}
                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Team Discussion</h3>
+                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Notes</h3>
                     <div className="space-y-4 mb-6 max-h-[300px] overflow-y-auto">
-                        {comments.length === 0 && <p className="text-slate-400 text-sm italic">No comments yet.</p>}
-                        {comments.map(c => {
-                            const author = users.find(u => u.id === c.authorId);
-                            return (
-                                <div key={c.id} className="flex gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold flex-shrink-0">
-                                        {author?.avatarInitials || '??'}
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="bg-slate-50 p-3 rounded-lg rounded-tl-none border border-slate-100">
-                                            <div className="flex justify-between items-center mb-1">
-                                                <span className="text-xs font-bold text-slate-700">{author?.name || 'Unknown'}</span>
-                                                <span className="text-[10px] text-slate-400">{new Date(c.createdAt).toLocaleString()}</span>
-                                            </div>
-                                            <p className="text-sm text-slate-600">{c.text}</p>
+                        {comments.length === 0 && <p className="text-slate-400 text-sm italic">No notes yet.</p>}
+                        {comments.map(c => (
+                            <div key={c.id} className="flex gap-3">
+                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold flex-shrink-0">
+                                    {currentUser.avatarInitials}
+                                </div>
+                                <div className="flex-1">
+                                    <div className="bg-slate-50 p-3 rounded-lg rounded-tl-none border border-slate-100">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs font-bold text-slate-700">{currentUser.name}</span>
+                                            <span className="text-[10px] text-slate-400">{new Date(c.createdAt).toLocaleString()}</span>
                                         </div>
+                                        <p className="text-sm text-slate-600">{c.text}</p>
                                     </div>
                                 </div>
-                            );
-                        })}
+                            </div>
+                        ))}
                     </div>
                     <div className="flex gap-2">
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             value={newCommentText}
                             onChange={(e) => setNewCommentText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
-                            placeholder="Write a comment..."
+                            placeholder="Add a note..."
                             className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                         />
-                        <button onClick={handleAddComment} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Send</button>
+                        <button onClick={handleAddComment} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add</button>
                     </div>
                  </div>
               </div>
@@ -603,7 +505,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           {/* TAB: STRATEGY */}
           {activeTab === 'STRATEGY' && (
               <div className="p-8 max-w-4xl mx-auto space-y-6">
-                
+
                 {/* KPI Section */}
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
@@ -615,10 +517,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     <div className="space-y-3">
                         {impactMetrics.map(metric => (
                             <div key={metric.id} className="flex flex-wrap md:flex-nowrap gap-3 items-start bg-slate-50 p-3 rounded-lg border border-slate-100 animate-in fade-in">
-                                {/* Type Select */}
                                 <div className="w-full md:w-1/4">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Type</label>
-                                    <select 
+                                    <select
                                         value={metric.type}
                                         onChange={(e) => handleUpdateMetric(metric.id, { type: e.target.value as ImpactType })}
                                         className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
@@ -626,21 +527,19 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         {Object.values(ImpactType).map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
-                                {/* Value Input */}
                                 <div className="w-1/2 md:w-1/5">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Target</label>
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         value={metric.value}
                                         onChange={(e) => handleUpdateMetric(metric.id, { value: parseFloat(e.target.value) })}
                                         className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
                                     />
                                 </div>
-                                {/* Currency (Conditional) */}
                                 {metric.type === ImpactType.REVENUE && (
                                     <div className="w-1/2 md:w-1/6">
                                         <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Currency</label>
-                                        <select 
+                                        <select
                                            value={metric.currency}
                                            onChange={(e) => handleUpdateMetric(metric.id, { currency: e.target.value as any })}
                                            className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
@@ -651,18 +550,16 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         </select>
                                     </div>
                                 )}
-                                {/* Description */}
                                 <div className="flex-1 min-w-[200px]">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Context</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={metric.description}
                                         onChange={(e) => handleUpdateMetric(metric.id, { description: e.target.value })}
                                         placeholder="e.g. Q3 Revenue Target"
                                         className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
                                     />
                                 </div>
-                                {/* Delete */}
                                 <button onClick={() => handleDeleteMetric(metric.id)} className="mt-6 text-slate-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors">
                                     <Trash className="w-4 h-4" />
                                 </button>
@@ -690,8 +587,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         ))}
                     </div>
                     <div className="flex gap-2">
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             value={newOkrInput}
                             onChange={(e) => setNewOkrInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAddOkr()}
@@ -709,7 +606,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Before Scenario</label>
-                            <textarea 
+                            <textarea
                                 value={beforeScenario}
                                 onChange={(e) => setBeforeScenario(e.target.value)}
                                 className="w-full h-24 p-3 bg-white border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none"
@@ -718,7 +615,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Expected Outcome</label>
-                            <textarea 
+                            <textarea
                                 value={afterScenario}
                                 onChange={(e) => setAfterScenario(e.target.value)}
                                 className="w-full h-24 p-3 bg-white border border-emerald-100 rounded-lg text-sm resize-none focus:ring-2 focus:ring-emerald-500 outline-none"
@@ -728,52 +625,21 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     </div>
                 </div>
 
-                {/* AI Flowchart Section Restored */}
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                        <GitGraph className="w-4 h-4 text-blue-500" /> Process Diagram (AI)
-                    </h3>
-                    <div className="flex gap-2 mb-4">
-                        <input 
-                            type="text" 
-                            value={diagramPrompt}
-                            onChange={(e) => setDiagramPrompt(e.target.value)}
-                            placeholder="Describe a process (e.g., 'A user logs in, checks email, then logs out')..."
-                            className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
-                        />
-                        <button 
-                            onClick={handleGenerateDiagram}
-                            disabled={isGeneratingDiagram || !diagramPrompt}
-                            className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
-                        >
-                            <Wand2 className="w-4 h-4" /> 
-                            {isGeneratingDiagram ? 'Generating...' : 'Generate'}
-                        </button>
-                    </div>
-                    {diagramCode && (
-                        <div className="border border-slate-100 rounded-lg p-2 bg-slate-50">
-                            <MermaidDiagram code={diagramCode} />
-                            <div className="flex justify-end mt-2">
-                                <button onClick={() => setDiagramCode('')} className="text-xs text-red-500 hover:underline">Clear Diagram</button>
-                            </div>
-                        </div>
-                    )}
-                </div>
+                {/* AI Flowchart Section */}
               </div>
           )}
 
-          {/* TAB: DETAILS (Main Edit) */}
+          {/* TAB: DETAILS */}
           {activeTab === 'DETAILS' && (
             <div className="p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Left Column: Main Content */}
               <div className="lg:col-span-2 space-y-6">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                  <textarea 
+                  <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    disabled={!canEditSensitive && taskToEdit !== undefined}
-                    className={`w-full px-4 py-3 bg-white text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all h-32 resize-none shadow-sm ${!canEditSensitive && taskToEdit ? 'bg-slate-50 cursor-not-allowed' : ''}`}
+                    className="w-full px-4 py-3 bg-white text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all h-32 resize-none shadow-sm"
                     placeholder="Detailed description of the task..."
                   />
                 </div>
@@ -789,29 +655,27 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     <div className="space-y-3">
                         {subtasks.map(subtask => (
                             <div key={subtask.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm transition-all hover:border-blue-300 group">
-                                <div className="flex items-center gap-3 p-3 cursor-pointer bg-slate-50/50 hover:bg-white transition-colors" onClick={() => toggleSubtaskExpand(subtask.id)}>
-                                    <button onClick={(e) => { e.stopPropagation(); toggleSubtaskExpand(subtask.id); }} className="text-slate-400 hover:text-slate-600">
+                                <div className="flex items-center gap-3 p-3 bg-slate-50/50 hover:bg-white transition-colors">
+                                    <button onClick={() => toggleSubtaskExpand(subtask.id)} className="text-slate-400 hover:text-slate-600">
                                         {expandedSubtaskId === subtask.id ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>}
                                     </button>
-                                    <button onClick={(e) => { e.stopPropagation(); handleUpdateSubtask(subtask.id, { completed: !subtask.completed }); }} className={`${subtask.completed ? 'text-green-500' : 'text-slate-300 hover:text-slate-400'}`}>
+                                    <button onClick={() => handleUpdateSubtask(subtask.id, { completed: !subtask.completed })} className={`${subtask.completed ? 'text-green-500' : 'text-slate-300 hover:text-slate-400'}`}>
                                         {subtask.completed ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
                                     </button>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={subtask.title}
-                                        onClick={(e) => e.stopPropagation()}
                                         onChange={(e) => handleUpdateSubtask(subtask.id, { title: e.target.value })}
                                         className={`bg-transparent border-none focus:ring-0 p-0 text-sm font-medium w-full ${subtask.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}
                                     />
-                                    {/* Milestone Toggle on Subtask */}
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleUpdateSubtask(subtask.id, { isMilestone: !subtask.isMilestone }); }}
+                                    <button
+                                        onClick={() => handleUpdateSubtask(subtask.id, { isMilestone: !subtask.isMilestone })}
                                         className={`p-1 rounded hover:bg-slate-100 transition-colors ${subtask.isMilestone ? 'bg-white' : 'bg-white'}`}
                                         title={subtask.isMilestone ? "This is a milestone" : "Mark as Milestone"}
                                     >
                                         <Flag className={`w-4 h-4 ${subtask.isMilestone ? 'fill-purple-600 text-purple-600' : 'text-slate-300 hover:text-purple-400'}`} />
                                     </button>
-                                    <button onClick={(e) => {e.stopPropagation(); handleDeleteSubtask(subtask.id);}} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100"><Trash className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteSubtask(subtask.id)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100"><Trash className="w-4 h-4" /></button>
                                 </div>
                                 {expandedSubtaskId === subtask.id && (
                                     <div className="p-4 border-t border-slate-100 bg-white grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -900,14 +764,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                 value={startDate}
                                 onChange={(e) => {
                                     setStartDate(e.target.value);
-                                    // If due date is before new start date, adjust it
                                     if (dueDate && e.target.value && dueDate < e.target.value) {
                                         setDueDate(e.target.value);
                                     }
                                 }}
                                 onClick={handleSafeShowPicker}
-                                disabled={!canEditSensitive}
-                                className="w-full text-xs border border-slate-300 rounded bg-white px-3 py-2 disabled:opacity-70 disabled:bg-slate-100 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full text-xs border border-slate-300 rounded bg-white px-3 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
                         <div>
@@ -918,40 +780,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                 onChange={(e) => setDueDate(e.target.value)}
                                 onClick={handleSafeShowPicker}
                                 min={startDate || undefined}
-                                disabled={!canEditSensitive}
-                                className="w-full text-xs border border-slate-300 rounded bg-white px-3 py-2 disabled:opacity-70 disabled:bg-slate-100 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full text-xs border border-slate-300 rounded bg-white px-3 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
-                    </div>
-
-                    <div>
-                         <label className="text-xs font-medium text-slate-600 mb-1 block flex items-center gap-1">
-                            <UserPlus className="w-3.5 h-3.5" />
-                            Assignee
-                         </label>
-                         <div className="flex items-center gap-2 bg-white border border-slate-300 rounded p-1.5 relative">
-                            <select
-                                value={assigneeId}
-                                onChange={(e) => setAssigneeId(e.target.value)}
-                                disabled={!canEditSensitive}
-                                className="bg-transparent text-sm w-full outline-none disabled:cursor-not-allowed disabled:text-slate-500 p-1 cursor-pointer"
-                            >
-                                <option value="">Select User...</option>
-                                {assignableTeams.map(team => (
-                                    <optgroup key={team.id} label={team.name}>
-                                        {assignableUsers.filter(u => u.teamIds && u.teamIds.includes(team.id)).map(user => (
-                                            <option key={user.id} value={user.id}>{user.name}</option>
-                                        ))}
-                                    </optgroup>
-                                ))}
-                                <optgroup label="Unassigned">
-                                    {assignableUsers.filter(u => !u.teamIds || u.teamIds.length === 0).map(user => (
-                                        <option key={user.id} value={user.id}>{user.name}</option>
-                                    ))}
-                                </optgroup>
-                            </select>
-                         </div>
-                         {!canEditSensitive && <p className="text-[10px] text-slate-400 mt-1">Only Admins can change assignees on existing tasks.</p>}
                     </div>
 
                     {/* Recurring Task Configuration */}
@@ -961,7 +792,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                 type="checkbox"
                                 checked={isRecurring}
                                 onChange={(e) => setIsRecurring(e.target.checked)}
-                                disabled={!canEditSensitive}
                                 className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                             />
                             <ArrowUpDown className="w-4 h-4" />
@@ -976,7 +806,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         <select
                                             value={recurrenceFrequency}
                                             onChange={(e) => setRecurrenceFrequency(e.target.value as any)}
-                                            disabled={!canEditSensitive}
                                             className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
                                         >
                                             <option value="DAILY">Daily</option>
@@ -993,7 +822,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                             max="99"
                                             value={recurrenceInterval}
                                             onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
-                                            disabled={!canEditSensitive}
                                             className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
                                         />
                                     </div>
@@ -1014,7 +842,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                                             setRecurrenceWeekDays([...recurrenceWeekDays, index].sort());
                                                         }
                                                     }}
-                                                    disabled={!canEditSensitive}
                                                     className={`text-xs py-1.5 rounded font-medium transition-colors ${
                                                         recurrenceWeekDays.includes(index)
                                                             ? 'bg-blue-600 text-white'
@@ -1047,7 +874,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                      </div>
                                  ) : null;
                              })}
-                             <select 
+                             <select
                                 onChange={(e) => {
                                     if(e.target.value && !dependencyIds.includes(e.target.value)) {
                                         setDependencyIds([...dependencyIds, e.target.value]);

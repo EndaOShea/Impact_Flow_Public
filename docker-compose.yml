@@ -54,14 +54,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:2001/api}
     container_name: impact-flow-frontend
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
-    environment:
-      NODE_ENV: production
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:2001/api}
     ports:
       - "2080:2080"
 

@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
-import { Task, User, Team, ImpactType, TaskStatus, ReportSchedule, UserRole } from '../types';
-import { 
-    Calendar, Printer, TrendingUp, Clock, CheckCircle2, 
+import { Task, ImpactType, TaskStatus, ReportSchedule } from '../types';
+import {
+    Calendar, Printer, TrendingUp, Clock, CheckCircle2,
     DollarSign, BarChart2, PieChart as PieChartIcon, ArrowUpRight, ArrowDownRight,
     PlayCircle, Mail, Plus, Trash, Clock as ClockIcon, CalendarDays, Repeat, Info, HelpCircle, Check
 } from 'lucide-react';
@@ -14,49 +13,40 @@ import { api } from '../services/api';
 
 interface SystemReportProps {
   tasks: Task[];
-  users: User[];
-  teams: Team[];
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
 
-export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams }) => {
+export const SystemReport: React.FC<SystemReportProps> = ({ tasks }) => {
   const [activeTab, setActiveTab] = useState<'GENERATE' | 'SCHEDULE'>('GENERATE');
-  
-  // Date State
+
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
 
-  // Schedule State
   const [schedules, setSchedules] = useState<ReportSchedule[]>([]);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
-  
-  // Form State for New Schedule
+
   const [schedName, setSchedName] = useState('');
   const [schedFreq, setSchedFreq] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM'>('WEEKLY');
   const [schedTime, setSchedTime] = useState('09:00');
-  
-  // Specific Configs
+
   const [dailyScope, setDailyScope] = useState<'TODAY' | 'YESTERDAY'>('YESTERDAY');
-  
+
   const [monthlyRunDay, setMonthlyRunDay] = useState<number>(1);
   const [monthlyScope, setMonthlyScope] = useState<'CALENDAR_MONTH' | 'ROLLING_DAYS'>('CALENDAR_MONTH');
   const [monthlyRollingDays, setMonthlyRollingDays] = useState<number>(30);
 
-  // Custom / Legacy
   const [schedCustomInterval, setSchedCustomInterval] = useState(2);
   const [schedWeekDays, setSchedWeekDays] = useState<number[]>([]);
   const [schedRangeEnd, setSchedRangeEnd] = useState<number>(0);
   const [schedRangeStart, setSchedRangeStart] = useState<number>(7);
 
   useEffect(() => {
-    // Default: This Month
     const start = new Date();
     start.setDate(1);
     setStartDate(start.toISOString().split('T')[0]);
     setEndDate(new Date().toISOString().split('T')[0]);
-    
-    // Load schedules
+
     loadSchedules();
   }, []);
 
@@ -72,7 +62,6 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
   const handleCreateSchedule = async () => {
       if(!schedName) return;
 
-      // Determine Offsets based on Type for backend compatibility
       let startOffset = schedRangeStart;
       let endOffset = schedRangeEnd;
 
@@ -81,49 +70,42 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
           else { startOffset = 1; endOffset = 1; }
       }
       else if (schedFreq === 'WEEKLY') {
-          // Fixed rule: Full 7-day period ending Yesterday.
-          // e.g. Run on Sunday. Covers Prev Sunday -> Saturday (Yesterday).
           startOffset = 7;
           endOffset = 1;
       }
       else if (schedFreq === 'MONTHLY') {
-          // For Calendar Month, offsets are symbolic (backend handles it)
-          startOffset = 30; endOffset = 0; 
+          startOffset = 30; endOffset = 0;
           if (monthlyScope === 'ROLLING_DAYS') {
               startOffset = monthlyRollingDays;
               endOffset = 0;
           }
       }
-      
+
       const newSchedule: ReportSchedule = {
           id: crypto.randomUUID(),
-          organizationId: 'current',
           name: schedName,
           frequency: schedFreq,
           time: schedTime,
-          
-          // Specifics
+
           dailyScope: schedFreq === 'DAILY' ? dailyScope : undefined,
           monthlyRunDay: schedFreq === 'MONTHLY' ? monthlyRunDay : undefined,
           monthlyScope: schedFreq === 'MONTHLY' ? monthlyScope : undefined,
           monthlyRollingValue: schedFreq === 'MONTHLY' && monthlyScope === 'ROLLING_DAYS' ? monthlyRollingDays : undefined,
-          
+
           customInterval: schedFreq === 'CUSTOM' ? schedCustomInterval : undefined,
           weekDays: schedFreq === 'WEEKLY' ? schedWeekDays : undefined,
-          
-          // Offsets
+
           rangeStartOffset: startOffset,
           rangeEndOffset: endOffset,
-          
+
           recipients: [],
           active: true
       };
-      
+
       try {
           await api.createReportSchedule(newSchedule);
           setIsCreatingSchedule(false);
 
-          // Reset Form
           setSchedName('');
           setSchedFreq('WEEKLY');
           setSchedWeekDays([]);
@@ -159,14 +141,12 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
 
       switch(preset) {
           case 'TODAY':
-              // Start/End is today
               break;
           case 'YESTERDAY':
               start.setDate(now.getDate() - 1);
               end.setDate(now.getDate() - 1);
               break;
           case 'THIS_WEEK':
-              // Start is Sunday
               start.setDate(now.getDate() - now.getDay());
               break;
           case 'LAST_WEEK':
@@ -178,22 +158,20 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
               break;
           case 'LAST_MONTH':
               start.setMonth(now.getMonth() - 1, 1);
-              end.setMonth(now.getMonth(), 0); // Last day of prev month
+              end.setMonth(now.getMonth(), 0);
               break;
           case 'THIS_YEAR':
-              start.setMonth(0, 1); // Jan 1st
-              // End is today
+              start.setMonth(0, 1);
               break;
           case 'LAST_YEAR':
-              start.setFullYear(now.getFullYear() - 1, 0, 1); // Jan 1st last year
-              end.setFullYear(now.getFullYear() - 1, 11, 31); // Dec 31st last year
+              start.setFullYear(now.getFullYear() - 1, 0, 1);
+              end.setFullYear(now.getFullYear() - 1, 11, 31);
               break;
       }
       setStartDate(start.toISOString().split('T')[0]);
       setEndDate(end.toISOString().split('T')[0]);
   };
 
-  // Filter Logic (Same as before)
   const reportData = useMemo(() => {
     if (!startDate || !endDate) return null;
     const startObj = new Date(startDate); startObj.setHours(0,0,0,0);
@@ -205,26 +183,37 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
     completedInPeriod.forEach(t => {
         totalHoursLogged += t.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
         t.impactMetrics.forEach(m => {
-            if(m.type === ImpactType.REVENUE) totalRevenue += (m.achievedValue || 0); 
+            if(m.type === ImpactType.REVENUE) totalRevenue += (m.achievedValue || 0);
             if(m.type === ImpactType.EFFICIENCY) totalTimeSaved += (m.achievedValue || 0);
         });
     });
-    const teamPerformance = teams.map(team => {
-        const teamUsers = users.filter(u => u.teamIds.includes(team.id)).map(u => u.id);
-        const tasksCount = completedInPeriod.filter(t => t.assigneeIds.some(aid => teamUsers.includes(aid))).length;
-        return { name: team.name, value: tasksCount };
-    }).filter(d => d.value > 0);
+
     const categoryMap: Record<string, number> = {};
-    completedInPeriod.forEach(t => {
-        t.subtasks.forEach(s => categoryMap[s.category] = (categoryMap[s.category] || 0) + s.hoursSpent);
+    // Count from all tasks in period (not just completed), use hoursSpent if available, otherwise estimatedHours
+    const tasksInPeriod = tasks.filter(t => {
+        const taskDate = t.completedAt || t.dueDate || t.createdAt;
+        return taskDate && new Date(taskDate) >= startObj && new Date(taskDate) <= endObj;
     });
-    const categoryDistribution = Object.entries(categoryMap).map(([name, value]) => ({ name, value }));
+    tasksInPeriod.forEach(t => {
+        t.subtasks.forEach(s => {
+            const hours = s.hoursSpent > 0 ? s.hoursSpent : s.estimatedHours;
+            categoryMap[s.category] = (categoryMap[s.category] || 0) + hours;
+        });
+    });
+    const categoryDistribution = Object.entries(categoryMap).map(([name, value]) => ({ name, value })).filter(item => item.value > 0);
+
+    const statusMap: Record<string, number> = {};
+    tasks.forEach(t => {
+        statusMap[t.status] = (statusMap[t.status] || 0) + 1;
+    });
+    const statusDistribution = Object.entries(statusMap).map(([name, value]) => ({ name: name.replace('_', ' '), value }));
+
     return {
         completed: completedInPeriod, created: createdInPeriod, due: dueInPeriod,
         metrics: { revenue: totalRevenue, timeSaved: totalTimeSaved, hoursLogged: totalHoursLogged, completionRate: dueInPeriod.length > 0 ? Math.round((completedInPeriod.length / dueInPeriod.length) * 100) : 0 },
-        charts: { teamPerformance, categoryDistribution }
+        charts: { statusDistribution, categoryDistribution }
     };
-  }, [tasks, users, teams, startDate, endDate]);
+  }, [tasks, startDate, endDate]);
 
   const handlePrint = () => window.print();
 
@@ -253,16 +242,15 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 pb-12">
-        {/* Navigation Tabs */}
         <div className="flex gap-4 border-b border-slate-200 print:hidden">
-            <button 
-                onClick={() => setActiveTab('GENERATE')} 
+            <button
+                onClick={() => setActiveTab('GENERATE')}
                 className={`pb-4 px-2 text-sm font-bold flex items-center gap-2 ${activeTab === 'GENERATE' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
             >
                 <BarChart2 className="w-4 h-4"/> Report Generator
             </button>
-            <button 
-                onClick={() => setActiveTab('SCHEDULE')} 
+            <button
+                onClick={() => setActiveTab('SCHEDULE')}
                 className={`pb-4 px-2 text-sm font-bold flex items-center gap-2 ${activeTab === 'SCHEDULE' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
             >
                 <ClockIcon className="w-4 h-4"/> Automation & Schedules
@@ -271,7 +259,6 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
 
         {activeTab === 'GENERATE' && (
             <>
-                {/* Controls */}
                 <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm gap-4 print:hidden">
                     <div className="flex flex-col md:flex-row gap-4 items-center w-full xl:w-auto">
                         <div className="flex flex-wrap gap-2">
@@ -288,7 +275,7 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                             <button onClick={() => handlePreset('LAST_YEAR')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">Last Year</button>
                         </div>
                     </div>
-                    
+
                     <div className="flex flex-col md:flex-row gap-4 items-center w-full xl:w-auto">
                         <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-200">
                             <span className="text-xs font-bold text-slate-500 pl-2">From</span>
@@ -305,7 +292,7 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                 {reportData && (
                 <div className="print:block">
                     <div className="mb-8 text-center md:text-left">
-                        <h1 className="text-3xl font-bold text-slate-900">System Performance Report</h1>
+                        <h1 className="text-3xl font-bold text-slate-900">Performance Report</h1>
                         <p className="text-slate-500 mt-2 text-sm font-medium">Period: {new Date(startDate).toLocaleDateString()} — {new Date(endDate).toLocaleDateString()}</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -322,15 +309,14 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                             <div className="flex items-end gap-2"><span className="text-3xl font-bold text-slate-800">{reportData.metrics.hoursLogged.toFixed(1)}</span></div>
                         </div>
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2 text-slate-500"><TrendingUp className="w-5 h-5 text-purple-500" /><span className="text-sm font-bold uppercase">Efficiency Gain</span></div>
+                            <div className="flex items-center gap-2 mb-2 text-slate-500"><TrendingUp className="w-5 h-5 text-purple-500" /><span className="text-sm font-bold uppercase">Time Saved (hrs)</span></div>
                             <div className="flex items-end gap-2"><span className="text-3xl font-bold text-slate-800">{reportData.metrics.timeSaved}</span></div>
                         </div>
                     </div>
-                    {/* Charts */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 print:break-inside-avoid">
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><BarChart2 className="w-5 h-5 text-blue-500" /> Tasks by Team</h3>
-                            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={reportData.charts.teamPerformance}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" axisLine={false} tickLine={false} /><YAxis axisLine={false} tickLine={false} /><Tooltip /><Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} /></BarChart></ResponsiveContainer></div>
+                            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><BarChart2 className="w-5 h-5 text-blue-500" /> Tasks by Status</h3>
+                            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={reportData.charts.statusDistribution}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" axisLine={false} tickLine={false} /><YAxis axisLine={false} tickLine={false} /><Tooltip /><Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} /></BarChart></ResponsiveContainer></div>
                         </div>
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                             <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><PieChartIcon className="w-5 h-5 text-purple-500" /> Work Categories (Hours)</h3>
@@ -347,7 +333,7 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                 <div className="flex justify-between items-center mb-6">
                     <div>
                         <h2 className="text-xl font-bold text-slate-800">Automated Report Schedules</h2>
-                        <p className="text-slate-500 text-sm">Configure reports to run automatically and email stakeholders.</p>
+                        <p className="text-slate-500 text-sm">Configure reports to run automatically.</p>
                     </div>
                     {!isCreatingSchedule ? (
                         <button onClick={() => setIsCreatingSchedule(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
@@ -361,34 +347,33 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                 {isCreatingSchedule && (
                     <div className="mb-8 bg-slate-50 p-6 rounded-xl border border-slate-200 animate-in slide-in-from-top-2">
                         <h3 className="font-bold text-slate-700 mb-4">New Report Schedule</h3>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            {/* General Settings */}
                             <div className="space-y-4">
                                 <h4 className="text-xs font-bold text-slate-400 uppercase border-b border-slate-200 pb-2">General Info</h4>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 mb-1">Report Name</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={schedName}
                                         onChange={(e) => setSchedName(e.target.value)}
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
-                                        placeholder="e.g. Weekly Management Summary"
+                                        placeholder="e.g. Weekly Summary"
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 mb-1">Run Time</label>
-                                    <input 
-                                        type="time" 
-                                        value={schedTime} 
+                                    <input
+                                        type="time"
+                                        value={schedTime}
                                         onChange={(e) => setSchedTime(e.target.value)}
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-xs font-bold text-slate-500 mb-1">Run Frequency</label>
-                                    <select 
-                                        value={schedFreq} 
+                                    <select
+                                        value={schedFreq}
                                         onChange={(e) => setSchedFreq(e.target.value as any)}
                                         className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
                                     >
@@ -399,12 +384,10 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                                     </select>
                                 </div>
                             </div>
-                            
-                            {/* Detailed Frequency Config */}
+
                             <div className="space-y-4">
                                 <h4 className="text-xs font-bold text-slate-400 uppercase border-b border-slate-200 pb-2">Configuration</h4>
-                                
-                                {/* DAILY CONFIG */}
+
                                 {schedFreq === 'DAILY' && (
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 mb-2">Report Data Scope</label>
@@ -421,14 +404,13 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                                     </div>
                                 )}
 
-                                {/* WEEKLY CONFIG */}
                                 {schedFreq === 'WEEKLY' && (
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-2">Run on Days</label>
                                             <div className="flex justify-between gap-1 bg-white p-2 rounded-lg border border-slate-200">
                                                 {['S','M','T','W','T','F','S'].map((d, i) => (
-                                                    <button 
+                                                    <button
                                                         key={i}
                                                         onClick={() => toggleWeekDay(i)}
                                                         className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${schedWeekDays.includes(i) ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
@@ -445,12 +427,11 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                                     </div>
                                 )}
 
-                                {/* MONTHLY CONFIG */}
                                 {schedFreq === 'MONTHLY' && (
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-1">Run on Day</label>
-                                            <select 
+                                            <select
                                                 value={monthlyRunDay}
                                                 onChange={(e) => setMonthlyRunDay(parseInt(e.target.value))}
                                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
@@ -461,7 +442,7 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                                                 <option value={32}>Last Day of Month</option>
                                             </select>
                                         </div>
-                                        
+
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-2">Data Scope</label>
                                             <div className="space-y-2">
@@ -469,7 +450,7 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                                                     <input type="radio" name="monthlyScope" checked={monthlyScope === 'CALENDAR_MONTH'} onChange={() => setMonthlyScope('CALENDAR_MONTH')} className="bg-white" />
                                                     <span className="text-sm font-medium text-slate-700">Previous Calendar Month</span>
                                                 </label>
-                                                
+
                                                 <label className="flex items-center gap-2 cursor-pointer bg-white border border-slate-200 px-3 py-2 rounded-lg">
                                                     <input type="radio" name="monthlyScope" checked={monthlyScope === 'ROLLING_DAYS'} onChange={() => setMonthlyScope('ROLLING_DAYS')} className="bg-white" />
                                                     <span className="text-sm font-medium text-slate-700">Rolling Days (Custom)</span>
@@ -478,11 +459,11 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                                                 {monthlyScope === 'ROLLING_DAYS' && (
                                                     <div className="pl-6">
                                                         <label className="text-xs text-slate-500 mr-2">Number of days:</label>
-                                                        <input 
-                                                            type="number" 
-                                                            min="1" 
+                                                        <input
+                                                            type="number"
+                                                            min="1"
                                                             max="365"
-                                                            value={monthlyRollingDays} 
+                                                            value={monthlyRollingDays}
                                                             onChange={(e) => setMonthlyRollingDays(parseInt(e.target.value) || 30)}
                                                             className="w-20 px-2 py-1 border border-slate-300 rounded text-sm bg-white text-black"
                                                         />
@@ -493,12 +474,11 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, users, teams 
                                     </div>
                                 )}
 
-                                {/* CUSTOM CONFIG */}
                                 {schedFreq === 'CUSTOM' && (
                                     <div className="space-y-4">
                                         <div>
                                             <label className="block text-xs font-bold text-slate-500 mb-1">Repeat Every (Days)</label>
-                                            <input 
+                                            <input
                                                 type="number"
                                                 min="1"
                                                 value={schedCustomInterval}

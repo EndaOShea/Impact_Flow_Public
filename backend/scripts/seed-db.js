@@ -40,20 +40,18 @@ const seedDatabase = async () => {
         const hashedPassword = await hashPassword(defaultPassword);
         console.log('✓ Hashed default password');
 
-        // Update all users with the hashed password
+        // Update user with the hashed password
         const result = await client.query(
             'UPDATE users SET password_hash = $1 WHERE password_hash = \'\'',
             [hashedPassword]
         );
 
-        console.log(`✓ Updated ${result.rowCount} user passwords`);
+        console.log(`✓ Updated ${result.rowCount} user password(s)`);
 
         console.log('\n✓ Database seeding complete!');
         console.log('\nDefault login credentials:');
-        console.log('  Username: admin');
+        console.log('  Username: user');
         console.log('  Password: Password123!');
-        console.log('\nOther test users: sarah, mike, test0, test1, test2, test3');
-        console.log('All use the same password: Password123!');
 
     } catch (error) {
         console.error('❌ Seeding failed:', error);

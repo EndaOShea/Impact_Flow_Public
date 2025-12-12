@@ -1,66 +1,34 @@
 import express from 'express';
 import { query, transaction } from '../config/database.js';
-import { requireAuth, requireOrganization } from '../middleware/auth.middleware.js';
+import { requireAuth } from '../middleware/auth.middleware.js';
 import { logAudit } from '../utils/auth.js';
 
 const router = express.Router();
 
-// All task routes require authentication and organization membership
+// All task routes require authentication
 router.use(requireAuth);
-router.use(requireOrganization);
 
 // ============================================================================
-// GET ALL TASKS (with filtering based on user role)
+// GET ALL TASKS
 // ============================================================================
 
 router.get('/', async (req, res) => {
     try {
-        const { status, priority, assigneeId, teamId } = req.query;
+        const { status, priority } = req.query;
         const user = req.user;
 
         let tasksQuery = `
-            SELECT
-                t.*,
-                json_agg(DISTINCT jsonb_build_object(
-                    'id', u_assignee.id,
-                    'name', u_assignee.name,
-                    'avatarInitials', u_assignee.avatar_initials
-                )) FILTER (WHERE u_assignee.id IS NOT NULL) as assignees,
-                json_agg(DISTINCT jsonb_build_object(
-                    'id', u_admin.id,
-                    'name', u_admin.name
-                )) FILTER (WHERE u_admin.id IS NOT NULL) as admins,
+            SELECT t.*,
                 u_creator.name as creator_name,
-                u_creator.avatar_initials as creator_initials,
-                team.name as team_name,
-                team.color as team_color
+                u_creator.avatar_initials as creator_initials
             FROM tasks t
-            LEFT JOIN task_assignees ta ON t.id = ta.task_id
-            LEFT JOIN users u_assignee ON ta.user_id = u_assignee.id
-            LEFT JOIN task_admins tad ON t.id = tad.task_id
-            LEFT JOIN users u_admin ON tad.user_id = u_admin.id
             LEFT JOIN users u_creator ON t.creator_id = u_creator.id
-            LEFT JOIN teams team ON t.assigned_team_id = team.id
-            WHERE t.organization_id = $1
+            WHERE t.creator_id = $1
         `;
 
-        const params = [user.organizationId];
+        const params = [user.id];
         let paramIndex = 2;
 
-        // Apply role-based filtering
-        if (user.role === 'USER' || user.role === 'TEAM_ADMIN') {
-            // Users only see tasks they're involved with
-            tasksQuery += ` AND (
-                t.creator_id = $${paramIndex}
-                OR EXISTS (SELECT 1 FROM task_assignees WHERE task_id = t.id AND user_id = $${paramIndex})
-                OR EXISTS (SELECT 1 FROM task_admins WHERE task_id = t.id AND user_id = $${paramIndex})
-            )`;
-            params.push(user.id);
-            paramIndex++;
-        }
-        // OWNER and ADMIN see all org tasks (no additional filter)
-
-        // Apply optional filters
         if (status) {
             tasksQuery += ` AND t.status = $${paramIndex}`;
             params.push(status);
@@ -73,82 +41,66 @@ router.get('/', async (req, res) => {
             paramIndex++;
         }
 
-        if (assigneeId) {
-            tasksQuery += ` AND EXISTS (SELECT 1 FROM task_assignees WHERE task_id = t.id AND user_id = $${paramIndex})`;
-            params.push(assigneeId);
-            paramIndex++;
-        }
-
-        if (teamId) {
-            tasksQuery += ` AND t.assigned_team_id = $${paramIndex}`;
-            params.push(teamId);
-            paramIndex++;
-        }
-
-        tasksQuery += ` GROUP BY t.id, u_creator.name, u_creator.avatar_initials, team.name, team.color
-                        ORDER BY t.created_at DESC`;
+        tasksQuery += ` ORDER BY t.created_at DESC`;
 
         const result = await query(tasksQuery, params);
 
         // Fetch subtasks, dependencies, and other nested data for each task
         const tasks = await Promise.all(result.rows.map(async (task) => {
-            // Get subtasks
-            const subtasksResult = await query(
-                'SELECT * FROM subtasks WHERE task_id = $1 ORDER BY position',
-                [task.id]
-            );
-
-            // Get dependencies
-            const depsResult = await query(
-                'SELECT depends_on_task_id FROM task_dependencies WHERE task_id = $1',
-                [task.id]
-            );
-
-            // Get impact metrics
-            const metricsResult = await query(
-                'SELECT * FROM impact_metrics WHERE task_id = $1',
-                [task.id]
-            );
-
-            // Get comments
-            const commentsResult = await query(
-                `SELECT c.*, u.name as author_name, u.avatar_initials
-                 FROM comments c
-                 JOIN users u ON c.author_id = u.id
-                 WHERE c.task_id = $1
-                 ORDER BY c.created_at DESC`,
-                [task.id]
-            );
-
-            // Get attachments
-            const attachmentsResult = await query(
-                'SELECT * FROM attachments WHERE task_id = $1 ORDER BY created_at DESC',
-                [task.id]
-            );
-
-            // Get activity log
-            const activityResult = await query(
-                'SELECT * FROM activity_log WHERE task_id = $1 ORDER BY timestamp DESC LIMIT 20',
-                [task.id]
-            );
-
-            // Get automations
-            const automationsResult = await query(
-                'SELECT * FROM automation_rules WHERE task_id = $1',
-                [task.id]
-            );
+            const [subtasks, deps, metrics, comments, attachments, activity, automations] = await Promise.all([
+                query('SELECT * FROM subtasks WHERE task_id = $1 ORDER BY position', [task.id]),
+                query('SELECT depends_on_task_id FROM task_dependencies WHERE task_id = $1', [task.id]),
+                query('SELECT * FROM impact_metrics WHERE task_id = $1', [task.id]),
+                query(`SELECT c.*, u.name as author_name, u.avatar_initials
+                       FROM comments c JOIN users u ON c.author_id = u.id
+                       WHERE c.task_id = $1 ORDER BY c.created_at DESC`, [task.id]),
+                query('SELECT * FROM attachments WHERE task_id = $1 ORDER BY created_at DESC', [task.id]),
+                query('SELECT * FROM activity_log WHERE task_id = $1 ORDER BY timestamp DESC LIMIT 20', [task.id]),
+                query('SELECT * FROM automation_rules WHERE task_id = $1', [task.id])
+            ]);
 
             return {
                 ...task,
-                subtasks: subtasksResult.rows,
-                dependencyIds: depsResult.rows.map(r => r.depends_on_task_id),
-                impactMetrics: metricsResult.rows,
-                comments: commentsResult.rows,
-                attachments: attachmentsResult.rows,
-                activityLog: activityResult.rows,
-                automations: automationsResult.rows,
-                assigneeIds: task.assignees ? task.assignees.map(a => a.id) : [],
-                adminIds: task.admins ? task.admins.map(a => a.id) : []
+                subtasks: subtasks.rows.map(s => ({
+                    ...s,
+                    hoursSpent: parseFloat(s.hours_spent) || 0,
+                    estimatedHours: parseFloat(s.estimated_hours) || 0,
+                    isMilestone: s.is_milestone,
+                    milestoneDescription: s.milestone_description
+                })),
+                dependencyIds: deps.rows.map(r => r.depends_on_task_id),
+                impactMetrics: metrics.rows.map(m => ({
+                    ...m,
+                    achievedValue: parseFloat(m.achieved_value) || 0,
+                    value: parseFloat(m.value) || 0
+                })),
+                comments: comments.rows.map(c => ({
+                    ...c,
+                    authorId: c.author_id,
+                    createdAt: c.created_at
+                })),
+                attachments: attachments.rows.map(a => ({
+                    ...a,
+                    createdAt: a.created_at
+                })),
+                activityLog: activity.rows.map(a => ({
+                    ...a,
+                    userId: a.user_id,
+                    userName: a.user_name
+                })),
+                automations: automations.rows,
+                creatorId: task.creator_id,
+                startDate: task.start_date,
+                dueDate: task.due_date,
+                isRecurring: task.is_recurring,
+                recurrenceConfig: task.recurrence_config,
+                okrAlignment: task.okrs?.[0] || '',
+                beforeScenario: task.before_scenario,
+                afterScenario: task.after_scenario,
+                impactNarrative: task.impact_narrative,
+                resourceLinks: task.resource_links || [],
+                createdAt: task.created_at,
+                completedAt: task.completed_at
             };
         }));
 
@@ -169,8 +121,8 @@ router.get('/:id', async (req, res) => {
         const user = req.user;
 
         const result = await query(
-            `SELECT t.* FROM tasks t WHERE t.id = $1 AND t.organization_id = $2`,
-            [id, user.organizationId]
+            `SELECT t.* FROM tasks t WHERE t.id = $1 AND t.creator_id = $2`,
+            [id, user.id]
         );
 
         if (result.rows.length === 0) {
@@ -179,34 +131,14 @@ router.get('/:id', async (req, res) => {
 
         const task = result.rows[0];
 
-        // Check access rights for non-admin users
-        if (user.role !== 'OWNER' && user.role !== 'ADMIN') {
-            const accessCheck = await query(
-                `SELECT 1 FROM tasks t
-                 WHERE t.id = $1 AND (
-                     t.creator_id = $2
-                     OR EXISTS (SELECT 1 FROM task_assignees WHERE task_id = t.id AND user_id = $2)
-                     OR EXISTS (SELECT 1 FROM task_admins WHERE task_id = t.id AND user_id = $2)
-                 )`,
-                [id, user.id]
-            );
-
-            if (accessCheck.rows.length === 0) {
-                return res.status(403).json({ error: 'Access denied to this task' });
-            }
-        }
-
-        // Fetch all related data (same as in list)
-        const [subtasks, deps, metrics, comments, attachments, activity, automations, assignees, admins] = await Promise.all([
+        const [subtasks, deps, metrics, comments, attachments, activity, automations] = await Promise.all([
             query('SELECT * FROM subtasks WHERE task_id = $1 ORDER BY position', [id]),
             query('SELECT depends_on_task_id FROM task_dependencies WHERE task_id = $1', [id]),
             query('SELECT * FROM impact_metrics WHERE task_id = $1', [id]),
             query(`SELECT c.*, u.name as author_name FROM comments c JOIN users u ON c.author_id = u.id WHERE c.task_id = $1 ORDER BY c.created_at DESC`, [id]),
             query('SELECT * FROM attachments WHERE task_id = $1 ORDER BY created_at DESC', [id]),
             query('SELECT * FROM activity_log WHERE task_id = $1 ORDER BY timestamp DESC LIMIT 20', [id]),
-            query('SELECT * FROM automation_rules WHERE task_id = $1', [id]),
-            query('SELECT u.id, u.name, u.avatar_initials FROM task_assignees ta JOIN users u ON ta.user_id = u.id WHERE ta.task_id = $1', [id]),
-            query('SELECT u.id, u.name FROM task_admins tad JOIN users u ON tad.user_id = u.id WHERE tad.task_id = $1', [id])
+            query('SELECT * FROM automation_rules WHERE task_id = $1', [id])
         ]);
 
         const fullTask = {
@@ -218,10 +150,18 @@ router.get('/:id', async (req, res) => {
             attachments: attachments.rows,
             activityLog: activity.rows,
             automations: automations.rows,
-            assigneeIds: assignees.rows.map(a => a.id),
-            assignees: assignees.rows,
-            adminIds: admins.rows.map(a => a.id),
-            admins: admins.rows
+            creatorId: task.creator_id,
+            startDate: task.start_date,
+            dueDate: task.due_date,
+            isRecurring: task.is_recurring,
+            recurrenceConfig: task.recurrence_config,
+            okrAlignment: task.okrs?.[0] || '',
+            beforeScenario: task.before_scenario,
+            afterScenario: task.after_scenario,
+            impactNarrative: task.impact_narrative,
+            resourceLinks: task.resource_links || [],
+            createdAt: task.created_at,
+            completedAt: task.completed_at
         };
 
         res.json(fullTask);
@@ -245,7 +185,6 @@ router.post('/', async (req, res) => {
             priority,
             startDate,
             dueDate,
-            assigneeIds,
             isRecurring,
             recurrenceConfig,
             dependencyIds,
@@ -257,29 +196,23 @@ router.post('/', async (req, res) => {
             beforeScenario,
             afterScenario,
             impactNarrative,
-            resourceLinks,
-            diagramCode,
-            assignedTeamId
+            resourceLinks
         } = req.body;
 
-        // Validation
         if (!title || title.trim().length === 0) {
             return res.status(400).json({ error: 'Title is required' });
         }
 
-        // Create task with transaction
         const newTask = await transaction(async (client) => {
-            // Insert main task
             const taskResult = await client.query(
                 `INSERT INTO tasks (
-                    organization_id, title, description, status, priority,
+                    title, description, status, priority,
                     start_date, due_date, is_recurring, recurrence_config,
-                    creator_id, assigned_team_id, diagram_code, okrs, milestone,
+                    creator_id, okrs, milestone,
                     before_scenario, after_scenario, impact_narrative, resource_links
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                 RETURNING *`,
                 [
-                    user.organizationId,
                     title.trim(),
                     description || '',
                     status || 'TODO',
@@ -289,8 +222,6 @@ router.post('/', async (req, res) => {
                     isRecurring || false,
                     recurrenceConfig ? JSON.stringify(recurrenceConfig) : null,
                     user.id,
-                    assignedTeamId || null,
-                    diagramCode || null,
                     okrs ? JSON.stringify(okrs) : '[]',
                     milestone || false,
                     beforeScenario || null,
@@ -301,22 +232,6 @@ router.post('/', async (req, res) => {
             );
 
             const task = taskResult.rows[0];
-
-            // Add creator as admin
-            await client.query(
-                'INSERT INTO task_admins (task_id, user_id) VALUES ($1, $2)',
-                [task.id, user.id]
-            );
-
-            // Add assignees
-            if (assigneeIds && assigneeIds.length > 0) {
-                for (const assigneeId of assigneeIds) {
-                    await client.query(
-                        'INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2)',
-                        [task.id, assigneeId]
-                    );
-                }
-            }
 
             // Add dependencies
             if (dependencyIds && dependencyIds.length > 0) {
@@ -393,17 +308,7 @@ router.post('/', async (req, res) => {
             return task;
         });
 
-        // Audit log
-        await logAudit(
-            user.id,
-            user.organizationId,
-            'TASK_CREATED',
-            'task',
-            newTask.id,
-            { title },
-            req.ip,
-            req.get('user-agent')
-        );
+        await logAudit(user.id, 'TASK_CREATED', 'task', newTask.id, { title }, req.ip, req.get('user-agent'));
 
         res.status(201).json(newTask);
     } catch (error) {
@@ -421,11 +326,9 @@ router.put('/:id', async (req, res) => {
         const { id } = req.params;
         const user = req.user;
 
-        // Check task exists and user has access
         const accessCheck = await query(
-            `SELECT t.* FROM tasks t
-             WHERE t.id = $1 AND t.organization_id = $2`,
-            [id, user.organizationId]
+            `SELECT t.* FROM tasks t WHERE t.id = $1 AND t.creator_id = $2`,
+            [id, user.id]
         );
 
         if (accessCheck.rows.length === 0) {
@@ -433,18 +336,6 @@ router.put('/:id', async (req, res) => {
         }
 
         const existingTask = accessCheck.rows[0];
-
-        // Check permissions (admins or task admins can edit)
-        if (user.role !== 'OWNER' && user.role !== 'ADMIN') {
-            const isTaskAdmin = await query(
-                'SELECT 1 FROM task_admins WHERE task_id = $1 AND user_id = $2',
-                [id, user.id]
-            );
-
-            if (isTaskAdmin.rows.length === 0) {
-                return res.status(403).json({ error: 'Only task admins can edit this task' });
-            }
-        }
 
         const {
             title,
@@ -455,63 +346,130 @@ router.put('/:id', async (req, res) => {
             dueDate,
             isRecurring,
             recurrenceConfig,
-            diagramCode,
             okrs,
             milestone,
             beforeScenario,
             afterScenario,
             impactNarrative,
             resourceLinks,
-            assignedTeamId
+            subtasks,
+            impactMetrics,
+            dependencyIds,
+            comments,
+            attachments
         } = req.body;
 
-        // Update task
+        // Update main task
         const result = await query(
             `UPDATE tasks SET
                 title = COALESCE($1, title),
                 description = COALESCE($2, description),
                 status = COALESCE($3, status),
                 priority = COALESCE($4, priority),
-                start_date = COALESCE($5, start_date),
-                due_date = COALESCE($6, due_date),
+                start_date = $5,
+                due_date = $6,
                 is_recurring = COALESCE($7, is_recurring),
-                recurrence_config = COALESCE($8, recurrence_config),
-                diagram_code = COALESCE($9, diagram_code),
-                okrs = COALESCE($10, okrs),
-                milestone = COALESCE($11, milestone),
-                before_scenario = COALESCE($12, before_scenario),
-                after_scenario = COALESCE($13, after_scenario),
-                impact_narrative = COALESCE($14, impact_narrative),
-                resource_links = COALESCE($15, resource_links),
-                assigned_team_id = COALESCE($16, assigned_team_id),
+                recurrence_config = $8,
+                okrs = $9,
+                milestone = COALESCE($10, milestone),
+                before_scenario = $11,
+                after_scenario = $12,
+                impact_narrative = $13,
+                resource_links = $14,
                 completed_at = CASE
                     WHEN $3 = 'COMPLETED' AND status != 'COMPLETED' THEN NOW()
                     WHEN $3 != 'COMPLETED' THEN NULL
                     ELSE completed_at
                 END,
                 updated_at = NOW()
-             WHERE id = $17
+             WHERE id = $15
              RETURNING *`,
             [
                 title,
                 description,
                 status,
                 priority,
-                startDate,
-                dueDate,
+                startDate || null,
+                dueDate || null,
                 isRecurring,
                 recurrenceConfig ? JSON.stringify(recurrenceConfig) : null,
-                diagramCode,
-                okrs ? JSON.stringify(okrs) : null,
+                okrs ? JSON.stringify(okrs) : '[]',
                 milestone,
-                beforeScenario,
-                afterScenario,
-                impactNarrative,
-                resourceLinks ? JSON.stringify(resourceLinks) : null,
-                assignedTeamId,
+                beforeScenario || null,
+                afterScenario || null,
+                impactNarrative || null,
+                resourceLinks ? JSON.stringify(resourceLinks) : '[]',
                 id
             ]
         );
+
+        // Update subtasks if provided
+        if (subtasks !== undefined) {
+            // Delete existing subtasks
+            await query('DELETE FROM subtasks WHERE task_id = $1', [id]);
+
+            // Insert new subtasks
+            if (subtasks && subtasks.length > 0) {
+                for (let i = 0; i < subtasks.length; i++) {
+                    const st = subtasks[i];
+                    await query(
+                        `INSERT INTO subtasks (
+                            task_id, title, completed, hours_spent, estimated_hours,
+                            category, notes, is_milestone, milestone_description, position
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                        [
+                            id,
+                            st.title,
+                            st.completed || false,
+                            st.hoursSpent || 0,
+                            st.estimatedHours || 0,
+                            st.category || 'Development',
+                            st.notes || '',
+                            st.isMilestone || false,
+                            st.milestoneDescription || null,
+                            i
+                        ]
+                    );
+                }
+            }
+        }
+
+        // Update impact metrics if provided
+        if (impactMetrics !== undefined) {
+            await query('DELETE FROM impact_metrics WHERE task_id = $1', [id]);
+
+            if (impactMetrics && impactMetrics.length > 0) {
+                for (const metric of impactMetrics) {
+                    await query(
+                        `INSERT INTO impact_metrics (
+                            task_id, type, value, achieved_value, currency, description
+                        ) VALUES ($1, $2, $3, $4, $5, $6)`,
+                        [
+                            id,
+                            metric.type,
+                            metric.value,
+                            metric.achievedValue || 0,
+                            metric.currency || 'USD',
+                            metric.description || ''
+                        ]
+                    );
+                }
+            }
+        }
+
+        // Update dependencies if provided
+        if (dependencyIds !== undefined) {
+            await query('DELETE FROM task_dependencies WHERE task_id = $1', [id]);
+
+            if (dependencyIds && dependencyIds.length > 0) {
+                for (const depId of dependencyIds) {
+                    await query(
+                        'INSERT INTO task_dependencies (task_id, depends_on_task_id) VALUES ($1, $2)',
+                        [id, depId]
+                    );
+                }
+            }
+        }
 
         // Activity log if status changed
         if (status && status !== existingTask.status) {
@@ -522,17 +480,7 @@ router.put('/:id', async (req, res) => {
             );
         }
 
-        // Audit log
-        await logAudit(
-            user.id,
-            user.organizationId,
-            'TASK_UPDATED',
-            'task',
-            id,
-            { changes: Object.keys(req.body) },
-            req.ip,
-            req.get('user-agent')
-        );
+        await logAudit(user.id, 'TASK_UPDATED', 'task', id, { changes: Object.keys(req.body) }, req.ip, req.get('user-agent'));
 
         res.json(result.rows[0]);
     } catch (error) {
@@ -550,22 +498,9 @@ router.delete('/:id', async (req, res) => {
         const { id } = req.params;
         const user = req.user;
 
-        // Only admins can delete tasks
-        if (user.role !== 'OWNER' && user.role !== 'ADMIN') {
-            const isTaskAdmin = await query(
-                'SELECT 1 FROM task_admins WHERE task_id = $1 AND user_id = $2',
-                [id, user.id]
-            );
-
-            if (isTaskAdmin.rows.length === 0) {
-                return res.status(403).json({ error: 'Only admins can delete tasks' });
-            }
-        }
-
-        // Check task exists
         const taskCheck = await query(
-            'SELECT title FROM tasks WHERE id = $1 AND organization_id = $2',
-            [id, user.organizationId]
+            'SELECT title FROM tasks WHERE id = $1 AND creator_id = $2',
+            [id, user.id]
         );
 
         if (taskCheck.rows.length === 0) {
@@ -574,20 +509,9 @@ router.delete('/:id', async (req, res) => {
 
         const taskTitle = taskCheck.rows[0].title;
 
-        // Delete task (cascades to all related tables)
         await query('DELETE FROM tasks WHERE id = $1', [id]);
 
-        // Audit log
-        await logAudit(
-            user.id,
-            user.organizationId,
-            'TASK_DELETED',
-            'task',
-            id,
-            { title: taskTitle },
-            req.ip,
-            req.get('user-agent')
-        );
+        await logAudit(user.id, 'TASK_DELETED', 'task', id, { title: taskTitle }, req.ip, req.get('user-agent'));
 
         res.json({ message: 'Task deleted successfully' });
     } catch (error) {
@@ -600,7 +524,6 @@ router.delete('/:id', async (req, res) => {
 // SUBTASK ROUTES
 // ============================================================================
 
-// Add subtask
 router.post('/:id/subtasks', async (req, res) => {
     try {
         const { id } = req.params;
@@ -610,7 +533,6 @@ router.post('/:id/subtasks', async (req, res) => {
             return res.status(400).json({ error: 'Subtask title is required' });
         }
 
-        // Get current max position
         const posResult = await query(
             'SELECT COALESCE(MAX(position), -1) + 1 as next_pos FROM subtasks WHERE task_id = $1',
             [id]
@@ -643,7 +565,6 @@ router.post('/:id/subtasks', async (req, res) => {
     }
 });
 
-// Update subtask
 router.put('/:id/subtasks/:subtaskId', async (req, res) => {
     try {
         const { subtaskId } = req.params;
@@ -676,7 +597,6 @@ router.put('/:id/subtasks/:subtaskId', async (req, res) => {
     }
 });
 
-// Delete subtask
 router.delete('/:id/subtasks/:subtaskId', async (req, res) => {
     try {
         const { subtaskId } = req.params;

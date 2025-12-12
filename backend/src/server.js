@@ -3,10 +3,8 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import compression from 'compression';
 
-// Load environment variables
 dotenv.config();
 
-// Import middleware
 import {
     corsMiddleware,
     helmetMiddleware,
@@ -17,15 +15,10 @@ import {
     notFoundHandler
 } from './middleware/security.middleware.js';
 
-// Import routes
 import authRoutes from './routes/auth.routes.js';
-import userRoutes from './routes/user.routes.js';
-import organizationRoutes from './routes/organization.routes.js';
-import teamRoutes from './routes/team.routes.js';
 import taskRoutes from './routes/task.routes.js';
-import taskAssignmentRoutes from './routes/taskAssignment.routes.js';
+import reportScheduleRoutes from './routes/reportSchedule.routes.js';
 
-// Import utilities
 import { cleanupExpiredSessions } from './utils/auth.js';
 import { pool } from './config/database.js';
 
@@ -36,30 +29,24 @@ const PORT = process.env.PORT || 2001;
 // MIDDLEWARE SETUP
 // ============================================================================
 
-// Security
 app.use(helmetMiddleware);
 app.use(corsMiddleware);
 
-// Body parsing
-app.use(express.json({ limit: '10mb' })); // For attachments as data URLs
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Compression
 app.use(compression());
 
-// Request processing
 app.use(sanitizeInput);
 app.use(requestLogger);
 
-// Rate limiting
 app.use('/api/', generalRateLimiter);
 
 // ============================================================================
 // ROUTES
 // ============================================================================
 
-// Health check (no auth required)
 app.get('/health', (req, res) => {
     res.json({
         status: 'ok',
@@ -68,25 +55,17 @@ app.get('/health', (req, res) => {
     });
 });
 
-// API routes
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/organizations', organizationRoutes);
-app.use('/api/teams', teamRoutes);
 app.use('/api/tasks', taskRoutes);
-app.use('/api/task-assignment-requests', taskAssignmentRoutes);
+app.use('/api/report-schedules', reportScheduleRoutes);
 
-// 404 handler
 app.use(notFoundHandler);
-
-// Error handler (must be last)
 app.use(errorHandler);
 
 // ============================================================================
 // BACKGROUND JOBS
 // ============================================================================
 
-// Session cleanup job (runs every hour)
 const SESSION_CLEANUP_INTERVAL = (parseInt(process.env.SESSION_CLEANUP_INTERVAL_MINUTES) || 60) * 60 * 1000;
 
 setInterval(async () => {
@@ -105,7 +84,7 @@ const server = app.listen(PORT, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════════╗
 ║                                                       ║
-║   Impact Flow API Server                             ║
+║   Impact Flow API Server (Single User)               ║
 ║                                                       ║
 ║   Environment: ${process.env.NODE_ENV || 'development'}                      ║
 ║   Port:        ${PORT}                                    ║
@@ -135,7 +114,6 @@ const gracefulShutdown = async (signal) => {
         }
     });
 
-    // Force shutdown after 10 seconds
     setTimeout(() => {
         console.error('Forcing shutdown after timeout');
         process.exit(1);
@@ -145,7 +123,6 @@ const gracefulShutdown = async (signal) => {
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Handle uncaught errors
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
     gracefulShutdown('uncaughtException');

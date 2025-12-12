@@ -139,7 +139,7 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
             </div>
         </div>
 
-        <div className="flex-1 w-full" style={{ minHeight: 0 }}>
+        <div className="flex-1 w-full" style={{ minHeight: '300px' }}>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 20, right: 30, left: 10, bottom: 5 }}>
@@ -176,7 +176,7 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
       {/* Task Status Pie Chart */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[450px]">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Task Progress Overview</h3>
-        <div className="flex-1 w-full" style={{ minHeight: 0 }}>
+        <div className="flex-1 w-full" style={{ minHeight: '300px' }}>
           {statusData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>

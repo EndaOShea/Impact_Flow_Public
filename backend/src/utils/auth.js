@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { query } from '../config/database.js';
 
 // ============================================================================
-// PASSWORD HASHING (Argon2id - same as frontend localStorage version)
+// PASSWORD HASHING (Argon2id)
 // ============================================================================
 
 const generateSalt = () => {
@@ -17,12 +17,11 @@ export const hashPassword = async (password) => {
         salt: new TextEncoder().encode(salt),
         parallelism: 1,
         iterations: 256,
-        memorySize: 512, // KB
+        memorySize: 512,
         hashLength: 32,
         outputType: 'hex'
     });
 
-    // Return in format: salt$hash (same as frontend)
     return `${salt}$${hash}`;
 };
 
@@ -47,17 +46,14 @@ export const verifyPassword = async (password, storedHashString) => {
 // SESSION MANAGEMENT
 // ============================================================================
 
-// Generate cryptographically secure session token
 export const generateSessionToken = () => {
-    return crypto.randomBytes(32).toString('hex'); // 64 char hex string
+    return crypto.randomBytes(32).toString('hex');
 };
 
-// Hash session token for storage (never store raw tokens)
 export const hashToken = (token) => {
     return crypto.createHash('sha256').update(token).digest('hex');
 };
 
-// Create session in database
 export const createSession = async (userId, ipAddress, userAgent) => {
     const token = generateSessionToken();
     const tokenHash = hashToken(token);
@@ -72,22 +68,18 @@ export const createSession = async (userId, ipAddress, userAgent) => {
         [userId, tokenHash, ipAddress, userAgent, expiresAt]
     );
 
-    return token; // Return raw token to client (only time it's visible)
+    return token;
 };
 
-// Validate session and return user
 export const validateSession = async (token) => {
     if (!token) return null;
 
     const tokenHash = hashToken(token);
 
     const result = await query(
-        `SELECT s.*, u.id as user_id, u.username, u.name, u.email, u.role,
-                u.organization_id, u.avatar_initials, o.name as organization_name,
-                o.banner_url as organization_banner_url
+        `SELECT s.*, u.id as user_id, u.username, u.name, u.email, u.avatar_initials
          FROM sessions s
          JOIN users u ON s.user_id = u.id
-         LEFT JOIN organizations o ON u.organization_id = o.id
          WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
         [tokenHash]
     );
@@ -96,33 +88,19 @@ export const validateSession = async (token) => {
 
     const session = result.rows[0];
 
-    // Update last activity
     await query(
         'UPDATE sessions SET last_activity = NOW() WHERE token_hash = $1',
         [tokenHash]
-    );
-
-    // Get user's team IDs
-    const teamsResult = await query(
-        'SELECT team_id FROM user_teams WHERE user_id = $1',
-        [session.user_id]
     );
 
     return {
         id: session.user_id,
         username: session.username,
         name: session.name,
-        email: session.email,
-        role: session.role,
-        organizationId: session.organization_id,
-        organizationName: session.organization_name,
-        organizationBannerUrl: session.organization_banner_url,
-        avatarInitials: session.avatar_initials,
-        teamIds: teamsResult.rows.map(r => r.team_id)
+        avatarInitials: session.avatar_initials
     };
 };
 
-// Destroy session
 export const destroySession = async (token) => {
     if (!token) return;
 
@@ -130,7 +108,6 @@ export const destroySession = async (token) => {
     await query('DELETE FROM sessions WHERE token_hash = $1', [tokenHash]);
 };
 
-// Cleanup expired sessions (run periodically)
 export const cleanupExpiredSessions = async () => {
     const result = await query('DELETE FROM sessions WHERE expires_at < NOW()');
     if (result.rowCount > 0) {
@@ -143,7 +120,6 @@ export const cleanupExpiredSessions = async () => {
 // ============================================================================
 
 export const generateRecoveryKey = () => {
-    // Format: RK-XXXX-XXXX-XXXX
     const part1 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const part2 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const part3 = crypto.randomBytes(2).toString('hex').toUpperCase();
@@ -152,14 +128,13 @@ export const generateRecoveryKey = () => {
 };
 
 // ============================================================================
-// API KEY ENCRYPTION (for user-specific API keys like Gemini)
+// API KEY ENCRYPTION
 // ============================================================================
 
 const API_KEY_ALGORITHM = 'aes-256-gcm';
 const ENCRYPTION_SECRET = process.env.API_KEY_ENCRYPTION_SECRET || 'default-secret-change-this';
 
 export const encryptApiKey = (apiKey) => {
-    // Derive key from secret
     const key = crypto.scryptSync(ENCRYPTION_SECRET, 'salt', 32);
     const iv = crypto.randomBytes(16);
 
@@ -169,7 +144,6 @@ export const encryptApiKey = (apiKey) => {
 
     const authTag = cipher.getAuthTag();
 
-    // Return iv:authTag:encrypted
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
 };
 
@@ -197,10 +171,10 @@ export const decryptApiKey = (encryptedData) => {
 // AUDIT LOGGING
 // ============================================================================
 
-export const logAudit = async (userId, organizationId, action, resourceType, resourceId, details, ipAddress, userAgent) => {
+export const logAudit = async (userId, action, resourceType, resourceId, details, ipAddress, userAgent) => {
     await query(
-        `INSERT INTO audit_log (user_id, organization_id, action, resource_type, resource_id, details, ip_address, user_agent)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [userId, organizationId, action, resourceType, resourceId, details ? JSON.stringify(details) : null, ipAddress, userAgent]
+        `INSERT INTO audit_log (user_id, action, resource_type, resource_id, details, ip_address, user_agent)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [userId, action, resourceType, resourceId, details ? JSON.stringify(details) : null, ipAddress, userAgent]
     );
 };
