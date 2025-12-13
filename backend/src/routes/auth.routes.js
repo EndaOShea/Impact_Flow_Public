@@ -7,9 +7,7 @@ import {
     createSession,
     destroySession,
     generateRecoveryKey,
-    logAudit,
-    encryptApiKey,
-    decryptApiKey
+    logAudit
 } from '../utils/auth.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { authRateLimiter } from '../middleware/security.middleware.js';

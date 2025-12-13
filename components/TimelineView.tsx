@@ -20,18 +20,22 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ tasks, users, onTask
     return d;
   });
 
-  const getPosition = (date?: Date) => {
+  const getPosition = (date?: Date | string) => {
     if (!date) return 0;
     const d = new Date(date);
+    if (isNaN(d.getTime())) return 0; // Invalid date
     const diff = d.getTime() - startDate.getTime();
     const days = diff / (1000 * 3600 * 24);
     return Math.max(0, Math.min(days, totalDays)) * (100 / totalDays);
   };
 
-  const getWidth = (start?: Date, end?: Date) => {
+  const getWidth = (start?: Date | string, end?: Date | string) => {
     if (!start || !end) return 100 / totalDays; // Default 1 day width
-    const s = Math.max(start.getTime(), startDate.getTime());
-    const e = Math.min(end.getTime(), startDate.getTime() + (totalDays * 24 * 3600 * 1000));
+    const startD = new Date(start);
+    const endD = new Date(end);
+    if (isNaN(startD.getTime()) || isNaN(endD.getTime())) return 100 / totalDays;
+    const s = Math.max(startD.getTime(), startDate.getTime());
+    const e = Math.min(endD.getTime(), startDate.getTime() + (totalDays * 24 * 3600 * 1000));
     const diff = e - s;
     const days = diff / (1000 * 3600 * 24);
     return Math.max(0.5, days) * (100 / totalDays); // Min 0.5 days width
@@ -71,19 +75,15 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ tasks, users, onTask
               const startPos = getPosition(task.startDate || task.createdAt);
               const width = getWidth(task.startDate || task.createdAt, task.dueDate || new Date());
               
-              const colorClass = 
+              const colorClass =
                 task.priority === Priority.CRITICAL ? 'bg-red-500' :
                 task.priority === Priority.HIGH ? 'bg-orange-500' :
                 task.priority === Priority.LOW ? 'bg-green-500' :
                 'bg-blue-500';
-              
-              // Display first assignee
-              const firstAssignee = task.assigneeIds && task.assigneeIds.length > 0 
-                  ? users.find(u => u.id === task.assigneeIds[0])?.name || 'Unassigned'
-                  : 'Unassigned';
-              
-              const multiSuffix = task.assigneeIds && task.assigneeIds.length > 1 ? ` +${task.assigneeIds.length - 1}` : '';
-              
+
+              // Display creator name (single user system)
+              const assigneeName = users.find(u => u.id === task.creatorId)?.name || 'You';
+
               const hasMilestones = task.subtasks && task.subtasks.some(s => s.isMilestone);
 
               return (
@@ -110,7 +110,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ tasks, users, onTask
                       onClick={() => onTaskClick(task)}
                       title={`${task.title} (${new Date(task.startDate || task.createdAt).toLocaleDateString()} - ${task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date'})`}
                     >
-                      {width > 5 && (firstAssignee + multiSuffix)}
+                      {width > 5 && assigneeName}
                     </div>
                   </div>
                 </div>

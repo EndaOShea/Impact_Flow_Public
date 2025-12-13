@@ -70,6 +70,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [expandedSubtaskId, setExpandedSubtaskId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [newCommentText, setNewCommentText] = useState('');
+  const [showKpiModal, setShowKpiModal] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null);
 
   const availableStatuses = useMemo(() => {
       if (taskToEdit) {
@@ -253,6 +255,31 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       }
   };
 
+  const handleStatusChange = (newStatus: TaskStatus) => {
+    // If marking as COMPLETED and there are impact metrics, show KPI modal
+    if (newStatus === TaskStatus.COMPLETED &&
+        status !== TaskStatus.COMPLETED &&
+        impactMetrics.length > 0) {
+      setPendingStatus(newStatus);
+      setShowKpiModal(true);
+    } else {
+      setStatus(newStatus);
+    }
+  };
+
+  const handleKpiModalSave = () => {
+    if (pendingStatus) {
+      setStatus(pendingStatus);
+      setPendingStatus(null);
+    }
+    setShowKpiModal(false);
+  };
+
+  const handleKpiModalCancel = () => {
+    setPendingStatus(null);
+    setShowKpiModal(false);
+  };
+
   const handleSave = () => {
     if (!title.trim()) return;
 
@@ -351,7 +378,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 <div className="relative group">
                     <select
                         value={status}
-                        onChange={(e) => setStatus(e.target.value as TaskStatus)}
+                        onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
                         className={`text-sm font-semibold pl-3 pr-8 py-1.5 rounded-full border-none focus:ring-2 focus:ring-offset-1 outline-none appearance-none cursor-pointer
                             ${status === TaskStatus.COMPLETED ? 'bg-green-100 text-green-700 focus:ring-green-500' :
                               status === TaskStatus.IN_PROGRESS ? 'bg-amber-100 text-amber-700 focus:ring-amber-500' :
@@ -527,7 +554,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         {Object.values(ImpactType).map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
-                                <div className="w-1/2 md:w-1/5">
+                                <div className="w-1/2 md:w-1/6">
                                     <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Target</label>
                                     <input
                                         type="number"
@@ -536,6 +563,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
                                     />
                                 </div>
+                                {taskToEdit && (
+                                    <div className="w-1/2 md:w-1/6">
+                                        <label className="text-[10px] font-bold text-emerald-600 uppercase mb-1 block">Achieved</label>
+                                        <input
+                                            type="number"
+                                            value={metric.achievedValue || 0}
+                                            onChange={(e) => handleUpdateMetric(metric.id, { achievedValue: parseFloat(e.target.value) || 0 })}
+                                            className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 bg-emerald-50 outline-none focus:border-emerald-500 font-semibold"
+                                            placeholder="0"
+                                        />
+                                    </div>
+                                )}
                                 {metric.type === ImpactType.REVENUE && (
                                     <div className="w-1/2 md:w-1/6">
                                         <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Currency</label>
@@ -902,6 +941,95 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           <button onClick={handleSave} className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md shadow-blue-600/20">Save Task</button>
         </div>
       </div>
+
+      {/* KPI Achievement Modal */}
+      {showKpiModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 animate-in fade-in slide-in-from-top-4">
+            <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-green-50 to-emerald-50">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <CheckCircle2 className="w-6 h-6 text-green-600" />
+                Record KPI Achievements
+              </h2>
+              <p className="text-sm text-slate-600 mt-1">Enter the actual results achieved for each KPI target</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {impactMetrics.map(metric => (
+                <div key={metric.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">{metric.type}</h3>
+                      {metric.description && (
+                        <p className="text-xs text-slate-500 mt-0.5">{metric.description}</p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-slate-500 uppercase font-medium">Target</div>
+                      <div className="text-lg font-bold text-blue-600">
+                        {metric.type === ImpactType.REVENUE && metric.currency && `${metric.currency} `}
+                        {metric.value.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1">
+                      <label className="text-xs font-medium text-slate-700 mb-1 block">
+                        Actual Achieved {metric.type === ImpactType.REVENUE && `(${metric.currency})`}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={metric.achievedValue || 0}
+                        onChange={(e) => handleUpdateMetric(metric.id, { achievedValue: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-lg font-semibold"
+                        placeholder="0"
+                        autoFocus={impactMetrics[0].id === metric.id}
+                      />
+                    </div>
+                    <div className="pt-6">
+                      {metric.achievedValue !== undefined && metric.achievedValue >= metric.value ? (
+                        <div className="flex items-center gap-1 text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+                          <CheckCircle2 className="w-5 h-5" />
+                          <span className="text-sm font-bold">Target Met!</span>
+                        </div>
+                      ) : metric.achievedValue !== undefined && metric.achievedValue > 0 ? (
+                        <div className="text-sm text-slate-600">
+                          <span className="font-semibold">{((metric.achievedValue / metric.value) * 100).toFixed(0)}%</span>
+                          <div className="text-xs text-slate-500">of target</div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {impactMetrics.length === 0 && (
+                <div className="text-center py-8 text-slate-400">
+                  <BarChart2 className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No KPIs to record</p>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+              <button
+                onClick={handleKpiModalCancel}
+                className="px-6 py-2 border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleKpiModalSave}
+                className="px-6 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 shadow-md shadow-green-600/20 transition-colors"
+              >
+                Save & Mark Complete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

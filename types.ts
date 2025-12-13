@@ -197,4 +197,4 @@ export interface ReportSchedule {
   active: boolean;
 }
 
-export type ViewState = 'DASHBOARD' | 'TASKS' | 'CALENDAR' | 'TIMELINE' | 'SETTINGS' | 'NOTIFICATIONS' | 'REPORTS';
+export type ViewState = 'DASHBOARD' | 'TASKS' | 'CALENDAR' | 'TIMELINE' | 'SETTINGS' | 'NOTIFICATIONS' | 'REPORTS' | 'ANALYTICS';

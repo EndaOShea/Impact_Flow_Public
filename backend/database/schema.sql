@@ -228,22 +228,6 @@ CREATE INDEX idx_report_schedules_user ON report_schedules(user_id);
 CREATE INDEX idx_report_schedules_active ON report_schedules(active);
 
 -- ============================================================================
--- API KEYS (Encrypted per user)
--- ============================================================================
-CREATE TABLE user_api_keys (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    service_name VARCHAR(100) NOT NULL, -- e.g., 'gemini', 'openai'
-    encrypted_key TEXT NOT NULL, -- Encrypted with server-side secret
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-    CONSTRAINT uq_user_service UNIQUE(user_id, service_name)
-);
-
-CREATE INDEX idx_api_keys_user ON user_api_keys(user_id);
-
--- ============================================================================
 -- SESSIONS (For authentication)
 -- ============================================================================
 CREATE TABLE sessions (
@@ -279,6 +263,63 @@ CREATE TABLE audit_log (
 CREATE INDEX idx_audit_log_user ON audit_log(user_id);
 CREATE INDEX idx_audit_log_timestamp ON audit_log(timestamp);
 CREATE INDEX idx_audit_log_action ON audit_log(action);
+
+-- ============================================================================
+-- ANALYTICS & USAGE TRACKING
+-- ============================================================================
+
+-- Usage analytics table for tracking user activity
+CREATE TABLE usage_analytics (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    event_type VARCHAR(100) NOT NULL, -- e.g., 'task_created', 'task_completed', 'login', 'view_dashboard'
+    event_category VARCHAR(50) NOT NULL, -- e.g., 'task', 'auth', 'navigation', 'report'
+    event_data JSONB, -- Additional event metadata
+    ip_address INET,
+    user_agent TEXT,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_analytics_user ON usage_analytics(user_id);
+CREATE INDEX idx_analytics_timestamp ON usage_analytics(timestamp);
+CREATE INDEX idx_analytics_event_type ON usage_analytics(event_type);
+CREATE INDEX idx_analytics_category ON usage_analytics(event_category);
+
+-- Daily usage summary (aggregated stats)
+CREATE TABLE daily_usage_summary (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    date DATE NOT NULL,
+    tasks_created INT DEFAULT 0,
+    tasks_completed INT DEFAULT 0,
+    tasks_updated INT DEFAULT 0,
+    logins INT DEFAULT 0,
+    session_duration_minutes INT DEFAULT 0, -- Total active time
+    views_count INT DEFAULT 0, -- Page views
+    reports_generated INT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    CONSTRAINT uq_user_date UNIQUE(user_id, date)
+);
+
+CREATE INDEX idx_daily_summary_user ON daily_usage_summary(user_id);
+CREATE INDEX idx_daily_summary_date ON daily_usage_summary(date);
+
+-- System metrics (overall usage stats)
+CREATE TABLE system_metrics (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    metric_date DATE NOT NULL UNIQUE,
+    total_users INT DEFAULT 0,
+    active_users INT DEFAULT 0, -- Users who logged in
+    total_tasks INT DEFAULT 0,
+    tasks_created_today INT DEFAULT 0,
+    tasks_completed_today INT DEFAULT 0,
+    avg_session_duration_minutes DECIMAL(10,2) DEFAULT 0,
+    total_logins INT DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_system_metrics_date ON system_metrics(metric_date);
 
 -- ============================================================================
 -- FUNCTIONS & TRIGGERS

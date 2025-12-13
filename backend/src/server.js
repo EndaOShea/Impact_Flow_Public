@@ -18,6 +18,7 @@ import {
 import authRoutes from './routes/auth.routes.js';
 import taskRoutes from './routes/task.routes.js';
 import reportScheduleRoutes from './routes/reportSchedule.routes.js';
+import analyticsRoutes from './routes/analytics.routes.js';
 
 import { cleanupExpiredSessions } from './utils/auth.js';
 import { pool } from './config/database.js';
@@ -58,6 +59,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/report-schedules', reportScheduleRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

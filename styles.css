@@ -36,3 +36,116 @@ aside ::-webkit-scrollbar-thumb {
 aside ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.4);
 }
+
+/* Print Styles for PDF Export */
+@media print {
+  /* Reset all page constraints */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Ensure main content is visible */
+  body * {
+    visibility: visible !important;
+  }
+
+  /* Hide non-printable elements */
+  .print\:hidden,
+  nav, aside,
+  button:not(.print\:block),
+  input[type="date"]:not(.print\:block),
+  select:not(.print\:block) {
+    display: none !important;
+  }
+
+  /* Remove height/overflow restrictions */
+  main, section, article, div {
+    max-height: none !important;
+    overflow: visible !important;
+    page-break-inside: auto !important;
+  }
+
+  /* Ensure containers expand */
+  .overflow-y-auto,
+  .overflow-hidden,
+  .max-h-screen,
+  .h-screen {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  /* Remove fixed positioning */
+  .fixed, .sticky {
+    position: relative !important;
+  }
+
+  /* Ensure white backgrounds for print */
+  .bg-slate-50, .bg-slate-100 {
+    background-color: white !important;
+  }
+
+  /* Page break control */
+  .print\:break-before-page {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .print\:break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .print\:break-after-page {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  /* Ensure charts and graphs are visible */
+  svg {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+
+  /* Force display of print content */
+  .print\:block {
+    display: block !important;
+  }
+
+  /* Remove shadows for cleaner print */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Ensure borders are visible */
+  .border, .border-t, .border-b, .border-l, .border-r {
+    border-color: #e2e8f0 !important;
+  }
+
+  /* Optimize spacing for print */
+  @page {
+    margin: 1cm;
+    size: A4;
+  }
+
+  /* Avoid orphans and widows */
+  p, h1, h2, h3, h4, h5, h6 {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* Keep headings with their content */
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+
+  /* Ensure links are visible with URLs in print (optional) */
+  a[href]:after {
+    content: none !important;
+  }
+}

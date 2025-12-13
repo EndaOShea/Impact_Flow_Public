@@ -323,6 +323,189 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks }) => {
                             <div className="h-64"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={reportData.charts.categoryDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{reportData.charts.categoryDistribution.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer></div>
                         </div>
                     </div>
+
+                    {/* Detailed Task Breakdown */}
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm print:break-before-page">
+                        <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <CheckCircle2 className="w-5 h-5 text-green-500" />
+                            Completed Tasks Breakdown
+                        </h3>
+
+                        {reportData.completed.length === 0 ? (
+                            <div className="text-center py-12 text-slate-400">
+                                <p>No tasks completed in this period.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                {reportData.completed.map((task, index) => {
+                                    const totalHours = task.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
+                                    const completedSubtasks = task.subtasks.filter(s => s.completed).length;
+                                    const progress = task.subtasks.length > 0 ? Math.round((completedSubtasks / task.subtasks.length) * 100) : 100;
+
+                                    return (
+                                        <div key={task.id} className="border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow print:break-inside-avoid">
+                                            {/* Task Header */}
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <span className="text-xs font-bold text-slate-400">#{index + 1}</span>
+                                                        <h4 className="text-lg font-bold text-slate-800">{task.title}</h4>
+                                                    </div>
+                                                    {task.description && (
+                                                        <p className="text-sm text-slate-600 mb-3">{task.description}</p>
+                                                    )}
+                                                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                                                        <span className="flex items-center gap-1">
+                                                            <Calendar className="w-3 h-3" />
+                                                            Completed: {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : 'N/A'}
+                                                        </span>
+                                                        <span className="flex items-center gap-1">
+                                                            <Clock className="w-3 h-3" />
+                                                            {totalHours.toFixed(1)} hours logged
+                                                        </span>
+                                                        <span className="flex items-center gap-1">
+                                                            <CheckCircle2 className="w-3 h-3" />
+                                                            {progress}% complete
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                                        task.priority === 'CRITICAL' ? 'bg-red-100 text-red-700' :
+                                                        task.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
+                                                        task.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
+                                                        'bg-green-100 text-green-700'
+                                                    }`}>
+                                                        {task.priority}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* KPIs Section */}
+                                            {task.impactMetrics.length > 0 && (
+                                                <div className="mb-4 bg-gradient-to-r from-emerald-50 to-blue-50 p-4 rounded-lg border border-emerald-100">
+                                                    <h5 className="text-xs font-bold text-slate-700 uppercase mb-3 flex items-center gap-2">
+                                                        <TrendingUp className="w-4 h-4 text-emerald-600" />
+                                                        Key Performance Indicators
+                                                    </h5>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        {task.impactMetrics.map(metric => {
+                                                            const target = metric.value;
+                                                            const achieved = metric.achievedValue || 0;
+                                                            const percent = target > 0 ? Math.min(100, Math.round((achieved / target) * 100)) : 0;
+                                                            const currencySymbol = metric.type === ImpactType.REVENUE
+                                                                ? (metric.currency === 'EUR' ? '€' : metric.currency === 'GBP' ? '£' : '$')
+                                                                : '';
+
+                                                            return (
+                                                                <div key={metric.id} className="bg-white p-3 rounded-lg border border-slate-200">
+                                                                    <div className="flex justify-between items-start mb-2">
+                                                                        <div>
+                                                                            <p className="text-xs font-bold text-slate-600">{metric.type}</p>
+                                                                            {metric.description && (
+                                                                                <p className="text-[10px] text-slate-400">{metric.description}</p>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                                                                            percent >= 100 ? 'bg-green-100 text-green-700' :
+                                                                            percent >= 80 ? 'bg-blue-100 text-blue-700' :
+                                                                            percent >= 50 ? 'bg-amber-100 text-amber-700' :
+                                                                            'bg-red-100 text-red-700'
+                                                                        }`}>
+                                                                            {percent}%
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="flex items-baseline gap-2 mb-2">
+                                                                        <span className="text-lg font-bold text-slate-800">
+                                                                            {currencySymbol}{achieved.toLocaleString()}
+                                                                        </span>
+                                                                        <span className="text-xs text-slate-400">
+                                                                            / {currencySymbol}{target.toLocaleString()} target
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                                                        <div
+                                                                            className={`h-1.5 rounded-full transition-all ${
+                                                                                percent >= 100 ? 'bg-green-500' :
+                                                                                percent >= 80 ? 'bg-blue-500' :
+                                                                                percent >= 50 ? 'bg-amber-500' :
+                                                                                'bg-red-500'
+                                                                            }`}
+                                                                            style={{ width: `${Math.min(100, percent)}%` }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Subtasks Breakdown */}
+                                            {task.subtasks.length > 0 && (
+                                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                                                    <h5 className="text-xs font-bold text-slate-700 uppercase mb-3">Work Breakdown ({task.subtasks.length} steps)</h5>
+                                                    <div className="space-y-2">
+                                                        {task.subtasks.map(subtask => (
+                                                            <div key={subtask.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-slate-100">
+                                                                <div className="flex items-center gap-2 flex-1">
+                                                                    {subtask.completed ? (
+                                                                        <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                                                    ) : (
+                                                                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0" />
+                                                                    )}
+                                                                    <span className={subtask.completed ? 'text-slate-500 line-through' : 'text-slate-700 font-medium'}>
+                                                                        {subtask.title}
+                                                                    </span>
+                                                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
+                                                                        {subtask.category}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex items-center gap-3 text-slate-500">
+                                                                    <span>{subtask.hoursSpent}h logged</span>
+                                                                    {subtask.estimatedHours > 0 && (
+                                                                        <span className="text-[10px]">({subtask.estimatedHours}h est.)</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Strategic Context */}
+                                            {(task.beforeScenario || task.afterScenario || task.impactNarrative) && (
+                                                <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
+                                                    {task.impactNarrative && (
+                                                        <div>
+                                                            <h5 className="text-xs font-bold text-slate-700 uppercase mb-1">Impact Summary</h5>
+                                                            <p className="text-sm text-slate-600 italic">"{task.impactNarrative}"</p>
+                                                        </div>
+                                                    )}
+                                                    {(task.beforeScenario || task.afterScenario) && (
+                                                        <div className="grid grid-cols-2 gap-3 text-xs">
+                                                            {task.beforeScenario && (
+                                                                <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                                                                    <p className="font-bold text-slate-500 mb-1">Before</p>
+                                                                    <p className="text-slate-600">{task.beforeScenario}</p>
+                                                                </div>
+                                                            )}
+                                                            {task.afterScenario && (
+                                                                <div className="bg-emerald-50 p-3 rounded border border-emerald-100">
+                                                                    <p className="font-bold text-emerald-700 mb-1">After</p>
+                                                                    <p className="text-slate-600">{task.afterScenario}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
                 )}
             </>

@@ -51,36 +51,42 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
 
   // Aggregate Data by Time (Month)
   const chartData = useMemo(() => {
-    const monthMap: Record<string, number> = {};
+    const monthMap: Record<string, { target: number; achieved: number }> = {};
 
     tasks.forEach(task => {
         // Determine date bucket (use Due Date or Created Date)
         const date = task.dueDate ? new Date(task.dueDate) : new Date(task.createdAt);
         const monthKey = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); // e.g. "Oct 24"
-        
-        // Initialize if not exists (to ensure sorting later, we might want to pre-fill months, but dense is ok for now)
-        if (monthMap[monthKey] === undefined) monthMap[monthKey] = 0;
+
+        // Initialize if not exists
+        if (monthMap[monthKey] === undefined) monthMap[monthKey] = { target: 0, achieved: 0 };
 
         task.impactMetrics.forEach(metric => {
             // Check if metric matches current filter
             const typeMatch = metric.type === filterConfig.type;
             let currencyMatch = true;
-            
+
             if (filterConfig.type === ImpactType.REVENUE) {
                 currencyMatch = metric.currency === filterConfig.currency;
             }
 
             if (typeMatch && currencyMatch) {
-                monthMap[monthKey] += metric.value;
+                monthMap[monthKey].target += metric.value;
+                monthMap[monthKey].achieved += (metric.achievedValue || 0);
             }
         });
     });
 
     // Convert to array and sort chronologically
     return Object.entries(monthMap)
-        .map(([name, value]) => ({ name, value, dateObj: new Date(Date.parse(`01 ${name}`)) }))
+        .map(([name, data]) => ({
+            name,
+            target: data.target,
+            achieved: data.achieved,
+            dateObj: new Date(Date.parse(`01 ${name}`))
+        }))
         .sort((a, b) => a.dateObj.getTime() - b.dateObj.getTime())
-        .map(({ name, value }) => ({ name, value }));
+        .map(({ name, target, achieved }) => ({ name, target, achieved }));
   }, [tasks, filterConfig]);
 
   // Task Completion Status for Pie Chart
@@ -112,7 +118,7 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
       {/* Total Impact Bar Chart */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[450px]">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[450px] min-w-0">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
             <div>
                 <h3 className="text-lg font-semibold text-slate-800">Business Impact Over Time</h3>
@@ -149,17 +155,34 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
                 <Tooltip
                   cursor={{fill: '#f8fafc'}}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value: number) => [
-                      `${filterConfig.currency === 'USD' ? '$' : filterConfig.currency === 'EUR' ? '€' : filterConfig.currency === 'GBP' ? '£' : ''}${value.toLocaleString()} ${!filter.includes('REVENUE') ? '' : ''}`,
-                      filterConfig.label
-                  ]}
+                  formatter={(value: number, name: string) => {
+                    const prefix = filterConfig.currency === 'USD' ? '$' : filterConfig.currency === 'EUR' ? '€' : filterConfig.currency === 'GBP' ? '£' : '';
+                    return [
+                      `${prefix}${value.toLocaleString()}`,
+                      name === 'target' ? 'Target' : 'Achieved'
+                    ];
+                  }}
+                />
+                <Legend
+                  verticalAlign="top"
+                  height={36}
+                  iconType="square"
+                  formatter={(value) => value === 'target' ? 'Target' : 'Achieved'}
                 />
                 <Bar
-                    dataKey="value"
+                    dataKey="target"
+                    fill="#94a3b8"
+                    radius={[6, 6, 0, 0]}
+                    barSize={30}
+                    name="Target"
+                    animationDuration={1000}
+                />
+                <Bar
+                    dataKey="achieved"
                     fill={filterConfig.color}
                     radius={[6, 6, 0, 0]}
-                    barSize={40}
-                    name={filterConfig.label}
+                    barSize={30}
+                    name="Achieved"
                     animationDuration={1000}
                 />
               </BarChart>
@@ -174,7 +197,7 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
       </div>
 
       {/* Task Status Pie Chart */}
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[450px]">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col h-[450px] min-w-0">
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Task Progress Overview</h3>
         <div className="flex-1 w-full" style={{ minHeight: '300px' }}>
           {statusData.length > 0 ? (

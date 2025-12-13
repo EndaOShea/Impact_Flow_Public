@@ -1,0 +1,115 @@
+# Production Docker Compose Configuration
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  # PostgreSQL Database (Internal only - no external ports)
+  postgres:
+    image: postgres:14-alpine
+    container_name: impact-flow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-impactflow_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    # Database NOT exposed to host - only accessible within Docker network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB:-impactflow_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  # Backend API (Internal only - accessed via nginx)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: impact-flow-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 2001
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-impactflow_db}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required - generate with: openssl rand -base64 48}
+      FRONTEND_URL: ${FRONTEND_URL:-https://your-domain.com}
+      SESSION_DURATION_HOURS: ${SESSION_DURATION_HOURS:-24}
+      SESSION_CLEANUP_INTERVAL_MINUTES: ${SESSION_CLEANUP_INTERVAL_MINUTES:-60}
+      RATE_LIMIT_WINDOW_MINUTES: ${RATE_LIMIT_WINDOW_MINUTES:-15}
+      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      LOG_LEVEL: ${LOG_LEVEL:-warn}
+    # Backend NOT exposed directly - only via nginx
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:2001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - backend-network
+
+  # Frontend (Internal only - served via nginx)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    container_name: impact-flow-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    # Frontend NOT exposed directly - only via nginx
+    networks:
+      - backend-network
+
+  # NGINX Reverse Proxy (Only exposed service)
+  nginx:
+    image: nginx:alpine
+    container_name: impact-flow-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/letsencrypt:ro  # SSL certificates (if using Let's Encrypt)
+      - certbot-webroot:/var/www/certbot:ro
+    depends_on:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - backend-network
+
+  # Certbot for Let's Encrypt SSL (Optional - for HTTPS)
+  # Uncomment to enable automatic SSL certificate management
+  # certbot:
+  #   image: certbot/certbot
+  #   container_name: impact-flow-certbot
+  #   volumes:
+  #     - ./ssl:/etc/letsencrypt
+  #     - certbot-webroot:/var/www/certbot
+  #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  postgres_data:
+    name: impact-flow-postgres-data
+  certbot-webroot:
+    name: impact-flow-certbot-webroot
+
+networks:
+  backend-network:
+    name: impact-flow-network
+    driver: bridge

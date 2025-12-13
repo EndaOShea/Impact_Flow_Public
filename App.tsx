@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Plus, GitGraph, BarChart2, Calendar as CalendarIcon,
   Settings, Bell, Search, Filter, ArrowUpDown, ChevronDown, Check, Menu, X,
-  LogOut
+  LogOut, Activity
 } from 'lucide-react';
 import { TaskModal } from './components/TaskModal';
 import { ImpactChart } from './components/ImpactChart';
@@ -10,8 +10,10 @@ import { CalendarView } from './components/CalendarView';
 import { TimelineView } from './components/TimelineView';
 import { SystemReport } from './components/SystemReport';
 import { AuthScreen } from './components/AuthScreen';
+import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { Task, TaskStatus, Priority, User, ViewState, WorkCategory } from './types';
 import { api } from './services/api';
+import { AnalyticsService, trackEvent } from './services/analytics';
 
 export const App: React.FC = () => {
   // --- AUTH & DATA STATE ---
@@ -20,6 +22,13 @@ export const App: React.FC = () => {
 
   // --- UI STATE ---
   const [view, setView] = useState<ViewState>('DASHBOARD');
+
+  // Track view changes
+  useEffect(() => {
+    if (currentUser) {
+      trackEvent.viewChanged(view);
+    }
+  }, [view, currentUser]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
@@ -29,6 +38,25 @@ export const App: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'ALL'>('ALL');
   const [filterPriority, setFilterPriority] = useState<Priority | 'ALL'>('ALL');
   const [filterDate, setFilterDate] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'UPCOMING'>('UPCOMING');
+
+  // Track filter changes
+  useEffect(() => {
+    if (currentUser && filterStatus !== 'ALL') {
+      trackEvent.filterApplied(`status:${filterStatus}`);
+    }
+  }, [filterStatus, currentUser]);
+
+  useEffect(() => {
+    if (currentUser && filterPriority !== 'ALL') {
+      trackEvent.filterApplied(`priority:${filterPriority}`);
+    }
+  }, [filterPriority, currentUser]);
+
+  useEffect(() => {
+    if (currentUser && filterDate !== 'ALL') {
+      trackEvent.filterApplied(`date:${filterDate}`);
+    }
+  }, [filterDate, currentUser]);
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
   // --- PREFERENCE MANAGEMENT ---
@@ -118,9 +146,16 @@ export const App: React.FC = () => {
     localStorage.setItem('impactflow_current_user', JSON.stringify(user));
     setView('DASHBOARD');
     loadUserPreferences(user.id);
+
+    // Initialize analytics
+    AnalyticsService.init();
+    trackEvent.login();
   };
 
   const handleLogout = () => {
+    trackEvent.logout();
+    AnalyticsService.cleanup();
+
     api.logout();
     setCurrentUser(null);
     localStorage.removeItem('impactflow_current_user');
@@ -261,8 +296,17 @@ export const App: React.FC = () => {
 
     if (isExistingTask) {
         await api.updateTask(updatedTask.id, updatedTask);
+        trackEvent.taskUpdated(updatedTask.id);
+
+        // Track completion
+        if (updatedTask.status === TaskStatus.COMPLETED) {
+            trackEvent.taskCompleted(updatedTask.id);
+        }
     } else {
         await api.createTask(updatedTask);
+        if (updatedTask.id) {
+            trackEvent.taskCreated(updatedTask.id);
+        }
     }
     refreshData();
   };
@@ -272,7 +316,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
+    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden print:h-auto print:overflow-visible print:block">
 
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
@@ -284,18 +328,11 @@ export const App: React.FC = () => {
 
       {/* Sidebar */}
       <aside className={`
-        fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-slate-300 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 flex flex-col
+        fixed inset-y-0 left-0 z-30 w-64 bg-slate-900 text-slate-300 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 flex flex-col print:hidden
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-            <div className="flex items-center">
-                <img
-                    src="/images/banner.png"
-                    alt="Impact Flow Logo"
-                    className="w-auto max-w-full object-contain"
-                    style={{ height: '60px' }}
-                />
-            </div>
+            <h1 className="text-xl font-bold text-white">Impact Flow</h1>
             <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white">
                 <X className="w-6 h-6" />
             </button>
@@ -348,8 +385,8 @@ export const App: React.FC = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-10">
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative print:h-auto print:overflow-visible">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-10 print:hidden">
           <div className="flex items-center gap-4">
             <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg">
               <Menu className="w-6 h-6" />
@@ -379,7 +416,7 @@ export const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 lg:p-8">
+        <div className="flex-1 overflow-y-auto p-4 lg:p-8 print:overflow-visible print:p-0">
 
             {(view === 'DASHBOARD' || view === 'TASKS') && (
                 <div className="mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-4 items-center animate-in slide-in-from-top-2">
@@ -610,7 +647,7 @@ export const App: React.FC = () => {
 
             {view === 'TIMELINE' && (
                 <div className="animate-in fade-in">
-                    <TimelineView tasks={filteredTasks} onTaskClick={(t) => { setTaskToEdit(t); setIsTaskModalOpen(true); }} />
+                    <TimelineView tasks={filteredTasks} users={[currentUser]} onTaskClick={(t) => { setTaskToEdit(t); setIsTaskModalOpen(true); }} />
                 </div>
             )}
 
