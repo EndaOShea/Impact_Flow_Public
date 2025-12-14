@@ -23,7 +23,7 @@ services:
     networks:
       - backend-network
 
-  # Backend API (Internal only - accessed via nginx)
+  # Backend API (Exposed to host for nginx reverse proxy)
   backend:
     build:
       context: ./backend
@@ -37,14 +37,15 @@ services:
       NODE_ENV: production
       PORT: 2001
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-impactflow_db}
-      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required - generate with: openssl rand -base64 48}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required - generate with openssl rand -base64 48}
       FRONTEND_URL: ${FRONTEND_URL:-https://your-domain.com}
       SESSION_DURATION_HOURS: ${SESSION_DURATION_HOURS:-24}
       SESSION_CLEANUP_INTERVAL_MINUTES: ${SESSION_CLEANUP_INTERVAL_MINUTES:-60}
       RATE_LIMIT_WINDOW_MINUTES: ${RATE_LIMIT_WINDOW_MINUTES:-15}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
       LOG_LEVEL: ${LOG_LEVEL:-warn}
-    # Backend NOT exposed directly - only via nginx
+    ports:
+      - "2001:2001"  # Exposed for host nginx
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:2001/health || exit 1"]
       interval: 30s
@@ -54,60 +55,26 @@ services:
     networks:
       - backend-network
 
-  # Frontend (Internal only - served via nginx)
+  # Frontend (Exposed to host for nginx reverse proxy)
   frontend:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: /api
+        VITE_API_URL: http://localhost:2001/api
     container_name: impact-flow-frontend
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
-    # Frontend NOT exposed directly - only via nginx
-    networks:
-      - backend-network
-
-  # NGINX Reverse Proxy (Only exposed service)
-  nginx:
-    image: nginx:alpine
-    container_name: impact-flow-nginx
-    restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./ssl:/etc/letsencrypt:ro  # SSL certificates (if using Let's Encrypt)
-      - certbot-webroot:/var/www/certbot:ro
-    depends_on:
-      - backend
-      - frontend
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - "2080:2080"  # Exposed for host (frontend serves on port 2080 inside container)
     networks:
       - backend-network
-
-  # Certbot for Let's Encrypt SSL (Optional - for HTTPS)
-  # Uncomment to enable automatic SSL certificate management
-  # certbot:
-  #   image: certbot/certbot
-  #   container_name: impact-flow-certbot
-  #   volumes:
-  #     - ./ssl:/etc/letsencrypt
-  #     - certbot-webroot:/var/www/certbot
-  #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   postgres_data:
     name: impact-flow-postgres-data
-  certbot-webroot:
-    name: impact-flow-certbot-webroot
 
 networks:
   backend-network:

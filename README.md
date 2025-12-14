@@ -8,12 +8,38 @@ A powerful multi-tenant task management application with **PostgreSQL backend**,
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Docker (Recommended - Production Ready)
 
+```bash
+# 1. Create .env file
+cp .env.example .env
+# Edit .env with your secrets (see .env.example)
+
+# 2. Start all services (PostgreSQL, Backend, Frontend)
+docker-compose -f docker-compose.prod.yml up -d
+
+# 3. Check logs
+docker-compose -f docker-compose.prod.yml logs -f
+
+# Access the application
+# Frontend: http://localhost:2080
+# Backend API: http://localhost:2001
+```
+
+**Default credentials:**
+- Username: `user`
+- Password: `Password123!`
+
+### Local Development (Without Docker)
+
+<details>
+<summary>Click to expand local setup instructions</summary>
+
+#### Prerequisites
 - Node.js 18+
 - PostgreSQL 14+
 
-### 1. Backend Setup (5 minutes)
+#### 1. Backend Setup
 
 ```bash
 # Create database
@@ -36,7 +62,7 @@ npm run dev
 
 Backend runs on `http://localhost:2001`
 
-### 2. Frontend Setup
+#### 2. Frontend Setup
 
 ```bash
 # Install dependencies
@@ -48,29 +74,34 @@ npm run dev
 
 Frontend runs on `http://localhost:3000`
 
-### 3. Login
-
-**Default credentials:**
-- Username: `admin`
+#### 3. Login
+- Username: `user`
 - Password: `Password123!`
+
+</details>
 
 **See [FRESH_START_GUIDE.md](FRESH_START_GUIDE.md) for complete setup guide with examples**
 
 ## Features
 
 - **PostgreSQL Backend**: Production-ready API with secure authentication
-- **Multi-Organization Support**: Complete tenant isolation with row-level security
-- **Role-Based Access Control**: System Admin, Owner, Admin, Team Admin, and User roles
+- **Single-User Mode**: Personal task management with impact tracking
 - **Impact Tracking**: Measure and visualize revenue, efficiency gains, customer satisfaction, and more
 - **AI-Powered Strategy**: Generate Mermaid flowcharts from natural language using Gemini AI
 - **Advanced Task Management**:
   - Recurring tasks with flexible schedules (daily, weekly, monthly, yearly)
-  - Multi-assignee support
   - Task dependencies
   - Subtasks with time tracking and work categorization
+  - Inline actual hours validation (no popups)
   - Activity logging and audit trails
+- **Secure File Attachments** (Max 3 per task, 5MB each):
+  - Whitelist-based validation (PDF, Word, Excel, PowerPoint, Images, Text, CSV)
+  - Client + server-side security validation
+  - Download functionality with sanitized filenames
+  - Blocks executables, scripts, SVG, and ZIP files
+- **Resource Links**: Clickable external links with security (opens in new tab)
 - **Multiple Views**: Dashboard, List, Calendar, Timeline, and Reports
-- **Team Collaboration**: Cross-team assignment requests with approval workflows
+- **Docker Deployment**: Production-ready containerized setup
 
 ## Tech Stack
 
@@ -79,18 +110,18 @@ Frontend runs on `http://localhost:3000`
 - **UI**: Tailwind CSS, Lucide React icons
 - **Charts**: Recharts
 - **AI**: Google Gemini API (gemini-2.5-flash)
-- **Security**: Argon2 password hashing, SHA-256 session tokens, CORS, rate limiting
+- **Deployment**: Docker, Docker Compose
+- **Security**:
+  - Argon2 password hashing, SHA-256 session tokens
+  - File upload validation (whitelist-based, MIME + extension checking)
+  - Filename sanitization, path traversal prevention
+  - CORS, rate limiting, audit logging
 
-## Default Test Accounts
+## Default Test Account
 
-Login with any of these test accounts (password: `Password123!`):
+Login credentials (password: `Password123!`):
 
-- **admin** - Organization Owner (Impact Flow HQ)
-- **sarah** - Standard User (Engineering & Customer Success)
-- **mike** - Standard User (Design & Product)
-- **sysadmin** - Platform System Admin
-- **test0** - Organization Owner (Test App)
-- **test1** - Team Admin (Sales & Marketing)
+- **user** - Single-user account
 
 ## 📁 Project Structure
 
@@ -171,7 +202,14 @@ await api.deleteTask('task-id');
 - ✅ CORS protection
 - ✅ SQL injection protection via parameterized queries
 - ✅ Comprehensive audit logging
-- ✅ Row-level security for multi-tenancy
+- ✅ **File Upload Security**:
+  - Whitelist-based file type validation (frontend + backend)
+  - MIME type + extension verification (defense in depth)
+  - Filename sanitization (prevents path traversal)
+  - Max 5MB per file, 3 files per task
+  - Blocks executables, scripts, SVG (XSS), ZIP files
+  - Server-side re-validation prevents bypass
+  - Audit logging for all file operations
 
 ## 📚 Documentation
 
@@ -181,12 +219,33 @@ await api.deleteTask('task-id');
 
 ## 🚀 Deployment
 
+### Docker Production (Recommended)
+
+```bash
+# Production deployment
+docker-compose -f docker-compose.prod.yml up -d
+
+# Rebuild after updates
+docker-compose -f docker-compose.prod.yml up -d --build
+
+# View logs
+docker-compose -f docker-compose.prod.yml logs -f
+```
+
+**Ports:**
+- Frontend: `http://localhost:2080`
+- Backend API: `http://localhost:2001`
+- PostgreSQL: `5432` (internal only)
+
+### Cloud Deployment
+
 See `backend/README.md` for deployment instructions.
 
-**Quick deploy:**
+**Options:**
 - Backend: Railway, Render, Heroku
 - Database: Neon, Supabase, AWS RDS
 - Frontend: Vercel, Netlify
+- Container: Docker Hub, AWS ECR, Google Container Registry
 
 ## 📝 License
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
     X, Plus, Trash, Wand2, CheckCircle2, Circle, ChevronDown, ChevronRight,
-    BarChart2, Upload, Paperclip,
+    BarChart2, Upload, Paperclip, Download, ExternalLink,
     Calendar, Flag, Clock, Bell, Link as LinkIcon, MessageSquare,
     Zap, Target, History, ArrowUpDown
 } from 'lucide-react';
@@ -72,6 +72,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [newCommentText, setNewCommentText] = useState('');
   const [showKpiModal, setShowKpiModal] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<TaskStatus | null>(null);
+  const [subtaskNeedingHours, setSubtaskNeedingHours] = useState<string | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
 
   const availableStatuses = useMemo(() => {
       if (taskToEdit) {
@@ -166,9 +168,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     if (updates.completed === true && taskToEdit) {
       const subtask = subtasks.find(s => s.id === id);
       if (subtask && (!subtask.hoursSpent || subtask.hoursSpent === 0)) {
-        alert('Please enter Actual Hours before marking this step as completed.');
+        setSubtaskNeedingHours(id);
+        setExpandedSubtaskId(id);
         return;
       }
+    }
+    // Clear the warning if completing successfully or updating hours
+    if (updates.hoursSpent && updates.hoursSpent > 0) {
+      setSubtaskNeedingHours(null);
     }
     setSubtasks(subtasks.map(s => s.id === id ? { ...s, ...updates } : s));
   };
@@ -197,8 +204,83 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAttachmentError(null); // Clear any previous errors
+
     if (e.target.files && e.target.files.length > 0) {
-      Array.from(e.target.files).forEach(file => {
+      const filesArray = Array.from(e.target.files);
+      const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB in bytes
+      const MAX_ATTACHMENTS = 3;
+
+      // Whitelist of allowed file types (security measure)
+      const ALLOWED_TYPES = [
+        // Documents
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain',
+        'text/csv',
+        // Images (safe formats only, excluding SVG for XSS protection)
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp',
+      ];
+
+      const ALLOWED_EXTENSIONS = [
+        '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+        '.txt', '.csv', '.jpg', '.jpeg', '.png', '.gif', '.webp'
+      ];
+
+      // Check if adding these files would exceed the limit
+      if (attachments.length + filesArray.length > MAX_ATTACHMENTS) {
+        setAttachmentError(`Maximum ${MAX_ATTACHMENTS} attachments allowed per task. You currently have ${attachments.length}.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      // Validate files
+      const validFiles: File[] = [];
+      const oversizedFiles: string[] = [];
+      const invalidTypeFiles: string[] = [];
+
+      filesArray.forEach(file => {
+        // Check file size
+        if (file.size > MAX_FILE_SIZE) {
+          oversizedFiles.push(file.name);
+          return;
+        }
+
+        // Check file type (MIME type)
+        if (!ALLOWED_TYPES.includes(file.type)) {
+          invalidTypeFiles.push(file.name);
+          return;
+        }
+
+        // Check file extension (defense in depth)
+        const hasValidExtension = ALLOWED_EXTENSIONS.some(ext =>
+          file.name.toLowerCase().endsWith(ext)
+        );
+        if (!hasValidExtension) {
+          invalidTypeFiles.push(file.name);
+          return;
+        }
+
+        validFiles.push(file);
+      });
+
+      // Show errors if any
+      if (oversizedFiles.length > 0) {
+        setAttachmentError(`File(s) too large (max 5MB): ${oversizedFiles.join(', ')}`);
+      } else if (invalidTypeFiles.length > 0) {
+        setAttachmentError(`Invalid file type(s): ${invalidTypeFiles.join(', ')}. Allowed: PDF, Word, Excel, PowerPoint, Text, CSV, Images (JPG/PNG/GIF/WEBP)`);
+      }
+
+      // Process valid files
+      validFiles.forEach(file => {
         const reader = new FileReader();
         reader.onload = (event) => {
           if (event.target?.result) {
@@ -210,7 +292,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               url: event.target.result as string,
               createdAt: new Date()
             };
-            setAttachments(prev => [...prev, newAttachment]);
+            setAttachments(prev => {
+              // Double-check limit in case of race condition
+              if (prev.length >= MAX_ATTACHMENTS) {
+                setAttachmentError(`Maximum ${MAX_ATTACHMENTS} attachments allowed per task.`);
+                return prev;
+              }
+              return [...prev, newAttachment];
+            });
           }
         };
         reader.readAsDataURL(file);
@@ -221,6 +310,32 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   const handleDeleteAttachment = (id: string) => {
     setAttachments(attachments.filter(a => a.id !== id));
+    setAttachmentError(null); // Clear error when file is removed
+  };
+
+  const handleDownloadAttachment = (attachment: Attachment) => {
+    try {
+      // Sanitize filename to prevent path traversal
+      const sanitizedFilename = attachment.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+      // Create a temporary anchor element for download
+      const link = document.createElement('a');
+      link.href = attachment.url; // Data URI
+      link.download = sanitizedFilename;
+      link.style.display = 'none';
+
+      // Trigger download
+      document.body.appendChild(link);
+      link.click();
+
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+      }, 100);
+    } catch (error) {
+      console.error('Download failed:', error);
+      setAttachmentError('Failed to download file. Please try again.');
+    }
   };
 
   const handleAddComment = () => {
@@ -453,19 +568,60 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                  {/* Attachments Section */}
                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                            <Paperclip className="w-4 h-4" /> Attachments
-                        </h3>
-                        <button onClick={() => fileInputRef.current?.click()} className="text-blue-600 hover:text-blue-700 text-xs font-medium flex items-center bg-blue-50 px-3 py-1 rounded-full"><Upload className="w-3 h-3 mr-1" /> Upload</button>
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                <Paperclip className="w-4 h-4" /> Attachments
+                            </h3>
+                            <span className="text-xs text-slate-500">
+                                ({attachments.length}/3, max 5MB each)
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={attachments.length >= 3}
+                            className={`text-xs font-medium flex items-center px-3 py-1 rounded-full transition-colors ${
+                                attachments.length >= 3
+                                    ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
+                                    : 'text-blue-600 hover:text-blue-700 bg-blue-50'
+                            }`}
+                        >
+                            <Upload className="w-3 h-3 mr-1" /> Upload
+                        </button>
                         <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileUpload} />
                     </div>
+                    {attachmentError && (
+                        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg animate-in fade-in slide-in-from-top-1">
+                            <p className="text-xs text-red-600 flex items-center gap-2">
+                                <Bell className="w-4 h-4" />
+                                {attachmentError}
+                            </p>
+                        </div>
+                    )}
                     <div className="grid grid-cols-2 gap-3">
                         {attachments.length === 0 && <p className="text-slate-400 text-xs italic col-span-2">No files attached.</p>}
                         {attachments.map(file => (
-                          <div key={file.id} className="flex items-center p-2 bg-slate-50 border border-slate-200 rounded-lg group">
+                          <div key={file.id} className="flex items-center p-2 bg-slate-50 border border-slate-200 rounded-lg group hover:bg-slate-100 transition-colors">
                              <div className="p-1.5 bg-white rounded mr-2"><Paperclip className="w-4 h-4 text-slate-500" /></div>
-                             <div className="flex-1 min-w-0"><h4 className="text-xs font-medium truncate">{file.name}</h4></div>
-                             <button onClick={() => handleDeleteAttachment(file.id)} className="p-1 text-slate-400 hover:text-red-500"><Trash className="w-3 h-3" /></button>
+                             <div className="flex-1 min-w-0">
+                                <h4 className="text-xs font-medium truncate">{file.name}</h4>
+                                <p className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                             </div>
+                             <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => handleDownloadAttachment(file)}
+                                    className="p-1 text-slate-400 hover:text-blue-600 transition-colors"
+                                    title="Download file"
+                                >
+                                    <Download className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => handleDeleteAttachment(file.id)}
+                                    className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                                    title="Delete file"
+                                >
+                                    <Trash className="w-3.5 h-3.5" />
+                                </button>
+                             </div>
                           </div>
                         ))}
                     </div>
@@ -476,14 +632,45 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><LinkIcon className="w-4 h-4" /> Resources</h3>
                     <div className="space-y-2">
                         {resourceLinks.map((link, idx) => (
-                            <div key={idx} className="flex gap-2">
-                                <input className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm bg-white" value={link.title} onChange={(e) => {
-                                    const newLinks = [...resourceLinks]; newLinks[idx].title = e.target.value; setResourceLinks(newLinks);
-                                }} placeholder="Resource Title" />
-                                <input className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm text-blue-600 bg-white" value={link.url} onChange={(e) => {
-                                    const newLinks = [...resourceLinks]; newLinks[idx].url = e.target.value; setResourceLinks(newLinks);
-                                }} placeholder="URL" />
-                                <button onClick={() => setResourceLinks(resourceLinks.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-500"><Trash className="w-4 h-4"/></button>
+                            <div key={idx} className="flex gap-2 items-center">
+                                <input
+                                    className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm bg-white"
+                                    value={link.title}
+                                    onChange={(e) => {
+                                        const newLinks = [...resourceLinks];
+                                        newLinks[idx].title = e.target.value;
+                                        setResourceLinks(newLinks);
+                                    }}
+                                    placeholder="Resource Title"
+                                />
+                                <input
+                                    className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm bg-white"
+                                    value={link.url}
+                                    onChange={(e) => {
+                                        const newLinks = [...resourceLinks];
+                                        newLinks[idx].url = e.target.value;
+                                        setResourceLinks(newLinks);
+                                    }}
+                                    placeholder="https://example.com"
+                                />
+                                {link.url && link.url.trim() && (
+                                    <a
+                                        href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                        title="Open in new tab"
+                                    >
+                                        <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                )}
+                                <button
+                                    onClick={() => setResourceLinks(resourceLinks.filter((_, i) => i !== idx))}
+                                    className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                                    title="Remove link"
+                                >
+                                    <Trash className="w-4 h-4"/>
+                                </button>
                             </div>
                         ))}
                         <button onClick={() => setResourceLinks([...resourceLinks, {title: '', url: ''}])} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
@@ -747,8 +934,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                                         value={subtask.hoursSpent}
                                                         onChange={(e) => handleUpdateSubtask(subtask.id, { hoursSpent: parseFloat(e.target.value) || 0 })}
                                                         disabled={!taskToEdit}
-                                                        className={`w-full text-xs border border-slate-200 rounded px-2 py-1.5 ${!taskToEdit ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'}`}
+                                                        className={`w-full text-xs border ${subtaskNeedingHours === subtask.id ? 'border-red-400 ring-2 ring-red-200' : 'border-slate-200'} rounded px-2 py-1.5 ${!taskToEdit ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'}`}
                                                     />
+                                                    {subtaskNeedingHours === subtask.id && (
+                                                        <p className="text-xs text-red-600 mt-1 animate-in fade-in slide-in-from-top-1 flex items-center gap-1">
+                                                            <Bell className="w-3 h-3" />
+                                                            Please enter actual hours before completing
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>

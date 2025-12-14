@@ -2,6 +2,7 @@ import express from 'express';
 import { query, transaction } from '../config/database.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { logAudit } from '../utils/auth.js';
+import { validateFile, validateAttachmentCount } from '../utils/fileValidation.js';
 
 const router = express.Router();
 
@@ -658,16 +659,45 @@ router.post('/:id/attachments', async (req, res) => {
         const { name, type, url, size } = req.body;
         const user = req.user;
 
-        if (!name || !url) {
-            return res.status(400).json({ error: 'Attachment name and URL are required' });
+        // Verify task exists and user has access
+        const taskCheck = await query(
+            'SELECT id FROM tasks WHERE id = $1 AND creator_id = $2',
+            [id, user.id]
+        );
+
+        if (taskCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
         }
+
+        // Check current attachment count
+        const countResult = await query(
+            'SELECT COUNT(*) as count FROM attachments WHERE task_id = $1',
+            [id]
+        );
+        const currentCount = parseInt(countResult.rows[0].count);
+
+        const countValidation = validateAttachmentCount(currentCount, 1);
+        if (!countValidation.valid) {
+            return res.status(400).json({ error: countValidation.error });
+        }
+
+        // Validate file
+        const fileValidation = validateFile({ name, type, url, size });
+        if (!fileValidation.valid) {
+            return res.status(400).json({ error: fileValidation.error });
+        }
+
+        // Use sanitized filename if provided
+        const finalName = fileValidation.sanitizedName || name;
 
         const result = await query(
             `INSERT INTO attachments (task_id, name, type, url, size, uploaded_by)
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING *`,
-            [id, name, type || 'application/octet-stream', url, size || 0, user.id]
+            [id, finalName, type, url, size, user.id]
         );
+
+        await logAudit(user.id, 'ATTACHMENT_ADDED', 'attachment', result.rows[0].id, { taskId: id, fileName: finalName }, req.ip, req.get('user-agent'));
 
         res.status(201).json(result.rows[0]);
     } catch (error) {
@@ -678,9 +708,24 @@ router.post('/:id/attachments', async (req, res) => {
 
 router.delete('/:id/attachments/:attachmentId', async (req, res) => {
     try {
-        const { attachmentId } = req.params;
+        const { id, attachmentId } = req.params;
+        const user = req.user;
+
+        // Verify the attachment belongs to a task owned by the user
+        const attachmentCheck = await query(
+            `SELECT a.id, a.name FROM attachments a
+             JOIN tasks t ON a.task_id = t.id
+             WHERE a.id = $1 AND t.id = $2 AND t.creator_id = $3`,
+            [attachmentId, id, user.id]
+        );
+
+        if (attachmentCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Attachment not found' });
+        }
 
         await query('DELETE FROM attachments WHERE id = $1', [attachmentId]);
+
+        await logAudit(user.id, 'ATTACHMENT_DELETED', 'attachment', attachmentId, { taskId: id, fileName: attachmentCheck.rows[0].name }, req.ip, req.get('user-agent'));
 
         res.json({ message: 'Attachment deleted successfully' });
     } catch (error) {
