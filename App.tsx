@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Plus, GitGraph, BarChart2, Calendar as CalendarIcon,
   Settings, Bell, Search, Filter, ArrowUpDown, ChevronDown, Check, Menu, X,
-  LogOut, Activity
+  LogOut, Activity, AlertTriangle, Trash2, Lock, Eye, EyeOff
 } from 'lucide-react';
 import { TaskModal } from './components/TaskModal';
 import { ImpactChart } from './components/ImpactChart';
@@ -33,6 +33,17 @@ export const App: React.FC = () => {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
   const [mutedTaskIds, setMutedTaskIds] = useState<string[]>([]);
+  const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+  const [deleteAccountError, setDeleteAccountError] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordChangeError, setPasswordChangeError] = useState('');
+  const [passwordChangeSuccess, setPasswordChangeSuccess] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // --- FILTER & SORT STATE ---
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'ALL'>('ALL');
@@ -161,6 +172,65 @@ export const App: React.FC = () => {
     localStorage.removeItem('impactflow_current_user');
     setView('DASHBOARD');
     setTasks([]);
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deleteAccountPassword) {
+      setDeleteAccountError('Password is required');
+      return;
+    }
+
+    try {
+      setDeleteAccountError('');
+      await api.deleteAccount(deleteAccountPassword);
+
+      // Track account deletion
+      trackEvent.logout();
+      AnalyticsService.cleanup();
+
+      // Clear all local data
+      setCurrentUser(null);
+      setTasks([]);
+      setView('DASHBOARD');
+      localStorage.clear();
+
+      // Close modal
+      setIsDeleteAccountModalOpen(false);
+      setDeleteAccountPassword('');
+    } catch (error: any) {
+      setDeleteAccountError(error.message || 'Failed to delete account');
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordChangeError('');
+    setPasswordChangeSuccess(false);
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordChangeError('All fields are required');
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setPasswordChangeError('New password must be at least 8 characters');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordChangeError('New passwords do not match');
+      return;
+    }
+
+    try {
+      await api.changePassword(currentPassword, newPassword);
+      setPasswordChangeSuccess(true);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordChangeSuccess(false), 3000);
+    } catch (error: any) {
+      setPasswordChangeError(error.message || 'Failed to change password');
+    }
   };
 
   // --- FILTERING LOGIC ---
@@ -665,6 +735,122 @@ export const App: React.FC = () => {
                             </div>
                         </div>
                     </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Lock className="w-5 h-5 text-slate-600" />
+                            <h2 className="text-lg font-bold text-slate-800">Change Password</h2>
+                        </div>
+
+                        {passwordChangeSuccess && (
+                            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4 flex items-center gap-2">
+                                <Check className="w-4 h-4" />
+                                Password changed successfully!
+                            </div>
+                        )}
+
+                        {passwordChangeError && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                                {passwordChangeError}
+                            </div>
+                        )}
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Current Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={showCurrentPassword ? 'text' : 'password'}
+                                        value={currentPassword}
+                                        onChange={(e) => setCurrentPassword(e.target.value)}
+                                        className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Enter current password"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    >
+                                        {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={showNewPassword ? 'text' : 'password'}
+                                        value={newPassword}
+                                        onChange={(e) => setNewPassword(e.target.value)}
+                                        className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Enter new password (min 8 characters)"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNewPassword(!showNewPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    >
+                                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
+                                <div className="relative">
+                                    <input
+                                        type={showConfirmPassword ? 'text' : 'password'}
+                                        value={confirmPassword}
+                                        onChange={(e) => setConfirmPassword(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
+                                        className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="Confirm new password"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                    >
+                                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={handleChangePassword}
+                                className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                            >
+                                Update Password
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl shadow-sm border border-red-200 p-6">
+                        <div className="flex items-start gap-3 mb-4">
+                            <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800 mb-1">Danger Zone</h2>
+                                <p className="text-sm text-slate-600">Irreversible actions that will permanently affect your account.</p>
+                            </div>
+                        </div>
+
+                        <div className="border-t border-slate-200 pt-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h3 className="font-semibold text-slate-800">Delete Account</h3>
+                                    <p className="text-sm text-slate-600">Permanently delete your account and all associated data.</p>
+                                </div>
+                                <button
+                                    onClick={() => setIsDeleteAccountModalOpen(true)}
+                                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    Delete Account
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -733,6 +919,71 @@ export const App: React.FC = () => {
         allTasks={tasks}
         currentUser={currentUser}
       />
+
+      {/* Delete Account Modal */}
+      {isDeleteAccountModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 animate-in fade-in">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-800">Delete Account</h2>
+                <p className="text-sm text-slate-600 mt-1">This action cannot be undone. All your data will be permanently deleted.</p>
+              </div>
+            </div>
+
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+              <h3 className="font-semibold text-red-800 mb-2">What will be deleted:</h3>
+              <ul className="text-sm text-red-700 space-y-1">
+                <li>• All tasks and subtasks</li>
+                <li>• All comments and attachments</li>
+                <li>• All analytics and activity logs</li>
+                <li>• Your profile and account settings</li>
+              </ul>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                Enter your password to confirm:
+              </label>
+              <input
+                type="password"
+                value={deleteAccountPassword}
+                onChange={(e) => setDeleteAccountPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleDeleteAccount()}
+                placeholder="Your password"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                autoFocus
+              />
+              {deleteAccountError && (
+                <p className="text-sm text-red-600 mt-2">{deleteAccountError}</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setIsDeleteAccountModalOpen(false);
+                  setDeleteAccountPassword('');
+                  setDeleteAccountError('');
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete My Account
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -266,4 +266,52 @@ router.post('/change-password', requireAuth, async (req, res) => {
     }
 });
 
+// ============================================================================
+// DELETE ACCOUNT
+// ============================================================================
+
+router.delete('/account', requireAuth, async (req, res) => {
+    try {
+        const { password } = req.body;
+
+        if (!password) {
+            return res.status(400).json({ error: 'Password is required to delete account' });
+        }
+
+        // Verify password before deletion
+        const result = await query(
+            'SELECT password_hash FROM users WHERE id = $1',
+            [req.user.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = result.rows[0];
+        const isValid = await verifyPassword(password, user.password_hash);
+
+        if (!isValid) {
+            return res.status(401).json({ error: 'Incorrect password' });
+        }
+
+        // Log the account deletion before deleting
+        await logAudit(req.user.id, 'ACCOUNT_DELETED', 'user', req.user.id, null, req.ip, req.get('user-agent'));
+
+        // Delete all sessions for this user
+        await query('DELETE FROM sessions WHERE user_id = $1', [req.user.id]);
+
+        // Delete the user (CASCADE will handle related data)
+        await query('DELETE FROM users WHERE id = $1', [req.user.id]);
+
+        // Clear session cookie
+        res.clearCookie('session');
+
+        res.json({ message: 'Account deleted successfully' });
+    } catch (error) {
+        console.error('Delete account error:', error);
+        res.status(500).json({ error: 'Failed to delete account' });
+    }
+});
+
 export default router;

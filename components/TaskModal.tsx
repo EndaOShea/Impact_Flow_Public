@@ -553,11 +553,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         </div>
 
         {/* Content Scroll Area */}
-        <div className="flex-1 overflow-y-auto bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto bg-slate-50/50 min-h-[500px]">
 
           {/* TAB: REPORT */}
           {activeTab === 'REPORT' && (
-             <div className="p-8">
+             <div className="p-8 max-w-4xl mx-auto">
                  <TaskReport task={currentTaskState} />
              </div>
           )}
@@ -857,7 +857,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
           {/* TAB: DETAILS */}
           {activeTab === 'DETAILS' && (
-            <div className="p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="p-8 max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Left Column: Main Content */}
               <div className="lg:col-span-2 space-y-6">
                 <div>

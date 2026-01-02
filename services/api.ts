@@ -96,6 +96,19 @@ class ApiClient {
     }
 
     /**
+     * Delete current user account
+     */
+    async deleteAccount(password: string): Promise<void> {
+        await this.request('/auth/account', {
+            method: 'DELETE',
+            body: JSON.stringify({ password })
+        });
+        this.sessionToken = null;
+        localStorage.removeItem('sessionToken');
+        localStorage.removeItem('currentUser');
+    }
+
+    /**
      * Get current logged-in user
      */
     async getCurrentUser(): Promise<User | null> {

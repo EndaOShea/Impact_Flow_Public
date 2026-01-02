@@ -9,6 +9,9 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon_io/favicon-32x32.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/images/favicon_io/apple-touch-icon.png" />
     <link rel="manifest" href="/images/favicon_io/site.webmanifest" />
+    <!-- Klaro GDPR Cookie Consent -->
+    <link rel="stylesheet" href="https://cdn.kiprotect.com/klaro/v0.7.18/klaro.min.css" />
+    <!-- Mermaid Diagrams -->
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
   <script type="importmap">
 {
@@ -33,6 +36,132 @@
         if (window.mermaid) {
           mermaid.initialize({ startOnLoad: false, theme: 'default' });
         }
+      });
+    </script>
+    <!-- Klaro GDPR Cookie Consent -->
+    <script>
+      var klaroConfig = {
+        version: 1,
+        elementID: 'klaro',
+        storageMethod: 'localStorage',
+        storageName: 'klaro_consent',
+        htmlTexts: true,
+        cookieExpiresAfterDays: 365,
+        default: false,
+        mustConsent: false,
+        acceptAll: true,
+        hideDeclineAll: false,
+        hideLearnMore: false,
+        disablePoweredBy: true,
+        groupByPurpose: false,
+        translations: {
+          zz: { privacyPolicyUrl: '/privacy-policy' },
+          en: {
+            consentModal: {
+              title: 'Privacy Settings',
+              description: 'We use cookies and similar technologies to enhance your experience. Some are essential for the application to function, while others help us improve performance and personalization.',
+            },
+            consentNotice: {
+              title: 'Cookie Consent',
+              description: 'We use cookies to ensure the best experience on our application. By clicking "Accept All", you consent to all cookies. Click "Manage" to customize your preferences.',
+              learnMore: 'Manage',
+            },
+            acceptAll: 'Accept All',
+            acceptSelected: 'Accept Selected',
+            decline: 'Decline All',
+            ok: 'OK',
+            save: 'Save',
+            close: 'Close',
+            privacyPolicy: {
+              name: 'Privacy Policy',
+              text: 'To learn more, please read our {privacyPolicy}.',
+            },
+            purposes: {
+              necessary: { title: 'Essential', description: 'Required for the application to function.' },
+              functional: { title: 'Functional', description: 'Enable personalized features and preferences.' },
+              analytics: { title: 'Analytics', description: 'Help us understand application usage.' },
+              external: { title: 'External Services', description: 'Load content from external providers.' },
+            },
+          },
+        },
+        services: [
+          {
+            name: 'session',
+            title: 'Session & Authentication',
+            purposes: ['necessary'],
+            description: 'Essential for login sessions and security. Cannot be disabled.',
+            required: true,
+            default: true,
+          },
+          {
+            name: 'preferences',
+            title: 'User Preferences',
+            purposes: ['functional'],
+            description: 'Stores your display preferences such as filters and sort options.',
+            required: false,
+            default: true,
+          },
+          {
+            name: 'mermaid',
+            title: 'Mermaid Diagrams',
+            purposes: ['external'],
+            description: 'External library for rendering flowcharts and diagrams.',
+            required: false,
+            default: true,
+          },
+          {
+            name: 'analytics',
+            title: 'Usage Analytics',
+            purposes: ['analytics'],
+            description: 'Helps us understand how you use the application.',
+            required: false,
+            default: false,
+          },
+        ],
+      };
+    </script>
+    <script src="https://cdn.kiprotect.com/klaro/v0.7.18/klaro.js"></script>
+    <script>
+      // Force toggle colors - GREEN when ON, RED when OFF
+      function fixKlaroToggles() {
+        const switches = document.querySelectorAll('#klaro .cm-switch, .klaro .cm-switch');
+        switches.forEach(sw => {
+          const input = sw.querySelector('input[type="checkbox"]');
+          const slider = sw.querySelector('.slider, span.slider');
+
+          if (input && slider) {
+            function updateColor() {
+              if (input.checked) {
+                slider.style.setProperty('background', 'linear-gradient(135deg, #10b981, #059669)', 'important');
+              } else {
+                slider.style.setProperty('background', 'linear-gradient(135deg, #ef4444, #dc2626)', 'important');
+              }
+            }
+
+            updateColor();
+            input.removeEventListener('change', updateColor); // Prevent duplicates
+            input.addEventListener('change', updateColor);
+          }
+        });
+      }
+
+      // Run multiple times to catch modal opening
+      setTimeout(fixKlaroToggles, 100);
+      setTimeout(fixKlaroToggles, 500);
+      setTimeout(fixKlaroToggles, 1000);
+
+      // Watch for modal opening
+      const observer = new MutationObserver(() => {
+        if (document.querySelector('.cookie-modal')) {
+          fixKlaroToggles();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      // Also run on any click (catches "Manage" button)
+      document.addEventListener('click', () => {
+        setTimeout(fixKlaroToggles, 50);
+        setTimeout(fixKlaroToggles, 200);
       });
     </script>
   </body>
