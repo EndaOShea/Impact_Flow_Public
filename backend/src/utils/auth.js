@@ -10,16 +10,24 @@ const generateSalt = () => {
     return crypto.randomBytes(16).toString('hex');
 };
 
+// Argon2id configuration - OWASP recommended settings
+// Memory: 64MB (65536 KB) - provides strong resistance to GPU/ASIC attacks
+// Iterations: 3 - balanced with higher memory for similar security
+// Parallelism: 1 - single-threaded for consistent timing
+const ARGON2_CONFIG = {
+    parallelism: 1,
+    iterations: 3,
+    memorySize: 65536, // 64MB in KB
+    hashLength: 32,
+    outputType: 'hex'
+};
+
 export const hashPassword = async (password) => {
     const salt = generateSalt();
     const hash = await argon2id({
         password,
         salt: new TextEncoder().encode(salt),
-        parallelism: 1,
-        iterations: 256,
-        memorySize: 512,
-        hashLength: 32,
-        outputType: 'hex'
+        ...ARGON2_CONFIG
     });
 
     return `${salt}$${hash}`;
@@ -32,11 +40,7 @@ export const verifyPassword = async (password, storedHashString) => {
     const hash = await argon2id({
         password,
         salt: new TextEncoder().encode(salt),
-        parallelism: 1,
-        iterations: 256,
-        memorySize: 512,
-        hashLength: 32,
-        outputType: 'hex'
+        ...ARGON2_CONFIG
     });
 
     return hash === originalHash;
@@ -116,7 +120,52 @@ export const cleanupExpiredSessions = async () => {
 };
 
 // ============================================================================
-// RECOVERY KEY GENERATION
+// PASSWORD HISTORY (Prevent reuse of recent passwords)
+// ============================================================================
+
+const PASSWORD_HISTORY_LIMIT = 5; // Remember last 5 passwords
+
+export const checkPasswordHistory = async (userId, newPassword) => {
+    const result = await query(
+        `SELECT password_hash FROM password_history
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [userId, PASSWORD_HISTORY_LIMIT]
+    );
+
+    for (const row of result.rows) {
+        const matches = await verifyPassword(newPassword, row.password_hash);
+        if (matches) {
+            return true; // Password was used recently
+        }
+    }
+    return false; // Password is not in history
+};
+
+export const savePasswordToHistory = async (userId, passwordHash) => {
+    // Save current password to history
+    await query(
+        'INSERT INTO password_history (user_id, password_hash) VALUES ($1, $2)',
+        [userId, passwordHash]
+    );
+
+    // Cleanup old entries, keep only the most recent ones
+    await query(
+        `DELETE FROM password_history
+         WHERE user_id = $1
+         AND id NOT IN (
+             SELECT id FROM password_history
+             WHERE user_id = $1
+             ORDER BY created_at DESC
+             LIMIT $2
+         )`,
+        [userId, PASSWORD_HISTORY_LIMIT]
+    );
+};
+
+// ============================================================================
+// RECOVERY KEY GENERATION & HASHING
 // ============================================================================
 
 export const generateRecoveryKey = () => {
@@ -125,6 +174,12 @@ export const generateRecoveryKey = () => {
     const part3 = crypto.randomBytes(2).toString('hex').toUpperCase();
 
     return `RK-${part1}-${part2}-${part3}`;
+};
+
+export const hashRecoveryKey = (recoveryKey) => {
+    // Normalize the recovery key (uppercase, trimmed) before hashing
+    const normalized = recoveryKey.trim().toUpperCase();
+    return crypto.createHash('sha256').update(normalized).digest('hex');
 };
 
 // ============================================================================

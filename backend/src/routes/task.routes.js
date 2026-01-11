@@ -21,9 +21,11 @@ router.get('/', async (req, res) => {
         let tasksQuery = `
             SELECT t.*,
                 u_creator.name as creator_name,
-                u_creator.avatar_initials as creator_initials
+                u_creator.avatar_initials as creator_initials,
+                p.title as project_title
             FROM tasks t
             LEFT JOIN users u_creator ON t.creator_id = u_creator.id
+            LEFT JOIN projects p ON t.project_id = p.id
             WHERE t.creator_id = $1
         `;
 
@@ -48,7 +50,7 @@ router.get('/', async (req, res) => {
 
         // Fetch subtasks, dependencies, and other nested data for each task
         const tasks = await Promise.all(result.rows.map(async (task) => {
-            const [subtasks, deps, metrics, comments, attachments, activity, automations] = await Promise.all([
+            const [subtasks, deps, metrics, comments, attachments, activity, automations, blockers] = await Promise.all([
                 query('SELECT * FROM subtasks WHERE task_id = $1 ORDER BY position', [task.id]),
                 query('SELECT depends_on_task_id FROM task_dependencies WHERE task_id = $1', [task.id]),
                 query('SELECT * FROM impact_metrics WHERE task_id = $1', [task.id]),
@@ -57,7 +59,12 @@ router.get('/', async (req, res) => {
                        WHERE c.task_id = $1 ORDER BY c.created_at DESC`, [task.id]),
                 query('SELECT * FROM attachments WHERE task_id = $1 ORDER BY created_at DESC', [task.id]),
                 query('SELECT * FROM activity_log WHERE task_id = $1 ORDER BY timestamp DESC LIMIT 20', [task.id]),
-                query('SELECT * FROM automation_rules WHERE task_id = $1', [task.id])
+                query('SELECT * FROM automation_rules WHERE task_id = $1', [task.id]),
+                query(`SELECT tb.*, tm.name as team_member_name
+                       FROM task_blockers tb
+                       JOIN team_members tm ON tb.team_member_id = tm.id
+                       WHERE tb.task_id = $1
+                       ORDER BY tb.created_at DESC`, [task.id])
             ]);
 
             return {
@@ -90,7 +97,18 @@ router.get('/', async (req, res) => {
                     userName: a.user_name
                 })),
                 automations: automations.rows,
+                blockers: blockers.rows.map(b => ({
+                    id: b.id,
+                    taskId: b.task_id,
+                    teamMemberId: b.team_member_id,
+                    teamMemberName: b.team_member_name,
+                    reason: b.reason,
+                    createdAt: b.created_at,
+                    resolvedAt: b.resolved_at
+                })),
                 creatorId: task.creator_id,
+                projectId: task.project_id,
+                projectTitle: task.project_title,
                 startDate: task.start_date,
                 dueDate: task.due_date,
                 isRecurring: task.is_recurring,
@@ -122,7 +140,10 @@ router.get('/:id', async (req, res) => {
         const user = req.user;
 
         const result = await query(
-            `SELECT t.* FROM tasks t WHERE t.id = $1 AND t.creator_id = $2`,
+            `SELECT t.*, p.title as project_title
+             FROM tasks t
+             LEFT JOIN projects p ON t.project_id = p.id
+             WHERE t.id = $1 AND t.creator_id = $2`,
             [id, user.id]
         );
 
@@ -132,14 +153,19 @@ router.get('/:id', async (req, res) => {
 
         const task = result.rows[0];
 
-        const [subtasks, deps, metrics, comments, attachments, activity, automations] = await Promise.all([
+        const [subtasks, deps, metrics, comments, attachments, activity, automations, blockers] = await Promise.all([
             query('SELECT * FROM subtasks WHERE task_id = $1 ORDER BY position', [id]),
             query('SELECT depends_on_task_id FROM task_dependencies WHERE task_id = $1', [id]),
             query('SELECT * FROM impact_metrics WHERE task_id = $1', [id]),
             query(`SELECT c.*, u.name as author_name FROM comments c JOIN users u ON c.author_id = u.id WHERE c.task_id = $1 ORDER BY c.created_at DESC`, [id]),
             query('SELECT * FROM attachments WHERE task_id = $1 ORDER BY created_at DESC', [id]),
             query('SELECT * FROM activity_log WHERE task_id = $1 ORDER BY timestamp DESC LIMIT 20', [id]),
-            query('SELECT * FROM automation_rules WHERE task_id = $1', [id])
+            query('SELECT * FROM automation_rules WHERE task_id = $1', [id]),
+            query(`SELECT tb.*, tm.name as team_member_name
+                   FROM task_blockers tb
+                   JOIN team_members tm ON tb.team_member_id = tm.id
+                   WHERE tb.task_id = $1
+                   ORDER BY tb.created_at DESC`, [id])
         ]);
 
         const fullTask = {
@@ -151,7 +177,18 @@ router.get('/:id', async (req, res) => {
             attachments: attachments.rows,
             activityLog: activity.rows,
             automations: automations.rows,
+            blockers: blockers.rows.map(b => ({
+                id: b.id,
+                taskId: b.task_id,
+                teamMemberId: b.team_member_id,
+                teamMemberName: b.team_member_name,
+                reason: b.reason,
+                createdAt: b.created_at,
+                resolvedAt: b.resolved_at
+            })),
             creatorId: task.creator_id,
+            projectId: task.project_id,
+            projectTitle: task.project_title,
             startDate: task.start_date,
             dueDate: task.due_date,
             isRecurring: task.is_recurring,
@@ -184,6 +221,7 @@ router.post('/', async (req, res) => {
             description,
             status,
             priority,
+            projectId,
             startDate,
             dueDate,
             isRecurring,
@@ -204,20 +242,62 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Title is required' });
         }
 
+        // Validate dates
+        if (startDate && dueDate) {
+            const start = new Date(startDate);
+            const due = new Date(dueDate);
+            if (due < start) {
+                return res.status(400).json({ error: 'Due date cannot be before start date' });
+            }
+        }
+
+        // Validate task dates are within project dates
+        if (projectId) {
+            const projectResult = await query(
+                'SELECT start_date, target_end_date FROM projects WHERE id = $1',
+                [projectId]
+            );
+
+            if (projectResult.rows.length > 0) {
+                const project = projectResult.rows[0];
+
+                if (startDate && project.start_date) {
+                    const taskStart = new Date(startDate);
+                    const projStart = new Date(project.start_date);
+                    if (taskStart < projStart) {
+                        return res.status(400).json({
+                            error: `Task start date cannot be before project start date (${projStart.toLocaleDateString()})`
+                        });
+                    }
+                }
+
+                if (dueDate && project.target_end_date) {
+                    const taskDue = new Date(dueDate);
+                    const projEnd = new Date(project.target_end_date);
+                    if (taskDue > projEnd) {
+                        return res.status(400).json({
+                            error: `Task due date cannot be after project end date (${projEnd.toLocaleDateString()})`
+                        });
+                    }
+                }
+            }
+        }
+
         const newTask = await transaction(async (client) => {
             const taskResult = await client.query(
                 `INSERT INTO tasks (
-                    title, description, status, priority,
+                    title, description, status, priority, project_id,
                     start_date, due_date, is_recurring, recurrence_config,
                     creator_id, okrs, milestone,
                     before_scenario, after_scenario, impact_narrative, resource_links
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
                 RETURNING *`,
                 [
                     title.trim(),
                     description || '',
                     status || 'TODO',
                     priority || 'MEDIUM',
+                    projectId || null,
                     startDate || null,
                     dueDate || null,
                     isRecurring || false,
@@ -343,6 +423,7 @@ router.put('/:id', async (req, res) => {
             description,
             status,
             priority,
+            projectId,
             startDate,
             dueDate,
             isRecurring,
@@ -360,6 +441,51 @@ router.put('/:id', async (req, res) => {
             attachments
         } = req.body;
 
+        // Validate dates
+        const finalStartDate = startDate !== undefined ? startDate : existingTask.start_date;
+        const finalDueDate = dueDate !== undefined ? dueDate : existingTask.due_date;
+
+        if (finalStartDate && finalDueDate) {
+            const start = new Date(finalStartDate);
+            const due = new Date(finalDueDate);
+            if (due < start) {
+                return res.status(400).json({ error: 'Due date cannot be before start date' });
+            }
+        }
+
+        // Validate task dates are within project dates
+        const finalProjectId = projectId !== undefined ? projectId : existingTask.project_id;
+        if (finalProjectId) {
+            const projectResult = await query(
+                'SELECT start_date, target_end_date FROM projects WHERE id = $1',
+                [finalProjectId]
+            );
+
+            if (projectResult.rows.length > 0) {
+                const project = projectResult.rows[0];
+
+                if (finalStartDate && project.start_date) {
+                    const taskStart = new Date(finalStartDate);
+                    const projStart = new Date(project.start_date);
+                    if (taskStart < projStart) {
+                        return res.status(400).json({
+                            error: `Task start date cannot be before project start date (${projStart.toLocaleDateString()})`
+                        });
+                    }
+                }
+
+                if (finalDueDate && project.target_end_date) {
+                    const taskDue = new Date(finalDueDate);
+                    const projEnd = new Date(project.target_end_date);
+                    if (taskDue > projEnd) {
+                        return res.status(400).json({
+                            error: `Task due date cannot be after project end date (${projEnd.toLocaleDateString()})`
+                        });
+                    }
+                }
+            }
+        }
+
         // Update main task
         const result = await query(
             `UPDATE tasks SET
@@ -367,29 +493,31 @@ router.put('/:id', async (req, res) => {
                 description = COALESCE($2, description),
                 status = COALESCE($3, status),
                 priority = COALESCE($4, priority),
-                start_date = $5,
-                due_date = $6,
-                is_recurring = COALESCE($7, is_recurring),
-                recurrence_config = $8,
-                okrs = $9,
-                milestone = COALESCE($10, milestone),
-                before_scenario = $11,
-                after_scenario = $12,
-                impact_narrative = $13,
-                resource_links = $14,
+                project_id = $5,
+                start_date = $6,
+                due_date = $7,
+                is_recurring = COALESCE($8, is_recurring),
+                recurrence_config = $9,
+                okrs = $10,
+                milestone = COALESCE($11, milestone),
+                before_scenario = $12,
+                after_scenario = $13,
+                impact_narrative = $14,
+                resource_links = $15,
                 completed_at = CASE
                     WHEN $3 = 'COMPLETED' AND status != 'COMPLETED' THEN NOW()
                     WHEN $3 != 'COMPLETED' THEN NULL
                     ELSE completed_at
                 END,
                 updated_at = NOW()
-             WHERE id = $15
+             WHERE id = $16
              RETURNING *`,
             [
                 title,
                 description,
                 status,
                 priority,
+                projectId || null,
                 startDate || null,
                 dueDate || null,
                 isRecurring,
@@ -731,6 +859,148 @@ router.delete('/:id/attachments/:attachmentId', async (req, res) => {
     } catch (error) {
         console.error('Delete attachment error:', error);
         res.status(500).json({ error: 'Failed to delete attachment' });
+    }
+});
+
+// ============================================================================
+// BLOCKER ROUTES
+// ============================================================================
+
+// Add a blocker to a task
+router.post('/:id/blockers', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { teamMemberId, reason } = req.body;
+        const user = req.user;
+
+        if (!teamMemberId) {
+            return res.status(400).json({ error: 'Team member ID is required' });
+        }
+
+        // Verify task exists and user has access
+        const taskCheck = await query(
+            'SELECT id, project_id FROM tasks WHERE id = $1 AND creator_id = $2',
+            [id, user.id]
+        );
+
+        if (taskCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
+        }
+
+        const task = taskCheck.rows[0];
+
+        // Verify team member exists and belongs to the same project
+        const memberCheck = await query(
+            'SELECT id, name FROM team_members WHERE id = $1 AND project_id = $2',
+            [teamMemberId, task.project_id]
+        );
+
+        if (memberCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Team member not found or does not belong to this project' });
+        }
+
+        const member = memberCheck.rows[0];
+
+        // Check if blocker already exists
+        const existingBlocker = await query(
+            'SELECT id FROM task_blockers WHERE task_id = $1 AND team_member_id = $2 AND resolved_at IS NULL',
+            [id, teamMemberId]
+        );
+
+        if (existingBlocker.rows.length > 0) {
+            return res.status(400).json({ error: 'This team member is already a blocker for this task' });
+        }
+
+        const result = await query(
+            `INSERT INTO task_blockers (task_id, team_member_id, reason)
+             VALUES ($1, $2, $3)
+             RETURNING *`,
+            [id, teamMemberId, reason || null]
+        );
+
+        const blocker = {
+            ...result.rows[0],
+            teamMemberName: member.name
+        };
+
+        await logAudit(user.id, 'BLOCKER_ADDED', 'task_blocker', result.rows[0].id, { taskId: id, teamMemberId, teamMemberName: member.name }, req.ip, req.get('user-agent'));
+
+        res.status(201).json(blocker);
+    } catch (error) {
+        console.error('Add blocker error:', error);
+        res.status(500).json({ error: 'Failed to add blocker' });
+    }
+});
+
+// Remove a blocker from a task
+router.delete('/:id/blockers/:blockerId', async (req, res) => {
+    try {
+        const { id, blockerId } = req.params;
+        const user = req.user;
+
+        // Verify the blocker belongs to a task owned by the user
+        const blockerCheck = await query(
+            `SELECT tb.id, tm.name as team_member_name
+             FROM task_blockers tb
+             JOIN tasks t ON tb.task_id = t.id
+             JOIN team_members tm ON tb.team_member_id = tm.id
+             WHERE tb.id = $1 AND t.id = $2 AND t.creator_id = $3`,
+            [blockerId, id, user.id]
+        );
+
+        if (blockerCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Blocker not found' });
+        }
+
+        const blocker = blockerCheck.rows[0];
+
+        await query('DELETE FROM task_blockers WHERE id = $1', [blockerId]);
+
+        await logAudit(user.id, 'BLOCKER_REMOVED', 'task_blocker', blockerId, { taskId: id, teamMemberName: blocker.team_member_name }, req.ip, req.get('user-agent'));
+
+        res.json({ message: 'Blocker removed successfully' });
+    } catch (error) {
+        console.error('Remove blocker error:', error);
+        res.status(500).json({ error: 'Failed to remove blocker' });
+    }
+});
+
+// Mark a blocker as resolved
+router.put('/:id/blockers/:blockerId/resolve', async (req, res) => {
+    try {
+        const { id, blockerId } = req.params;
+        const user = req.user;
+
+        // Verify the blocker belongs to a task owned by the user
+        const blockerCheck = await query(
+            `SELECT tb.id, tm.name as team_member_name
+             FROM task_blockers tb
+             JOIN tasks t ON tb.task_id = t.id
+             JOIN team_members tm ON tb.team_member_id = tm.id
+             WHERE tb.id = $1 AND t.id = $2 AND t.creator_id = $3`,
+            [blockerId, id, user.id]
+        );
+
+        if (blockerCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Blocker not found' });
+        }
+
+        const blocker = blockerCheck.rows[0];
+
+        const result = await query(
+            `UPDATE task_blockers
+             SET resolved_at = NOW()
+             WHERE id = $1
+             RETURNING *`,
+            [blockerId]
+        );
+
+        await logAudit(user.id, 'BLOCKER_RESOLVED', 'task_blocker', blockerId, { taskId: id, teamMemberName: blocker.team_member_name }, req.ip, req.get('user-agent'));
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error('Resolve blocker error:', error);
+        res.status(500).json({ error: 'Failed to resolve blocker' });
     }
 });
 

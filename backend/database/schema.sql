@@ -11,17 +11,61 @@ CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     username VARCHAR(100) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL, -- Argon2id hash
-    recovery_key VARCHAR(50) UNIQUE, -- RK-XXXX-XXXX-XXXX format
+    recovery_key VARCHAR(100) UNIQUE, -- SHA-256 hash of RK-XXXX-XXXX-XXXX
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255),
     avatar_initials VARCHAR(5),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    last_login TIMESTAMP WITH TIME ZONE
+    last_login TIMESTAMP WITH TIME ZONE,
+    -- Account lockout fields
+    failed_login_attempts INTEGER DEFAULT 0,
+    locked_until TIMESTAMP WITH TIME ZONE
 );
 
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_users_recovery ON users(recovery_key);
+
+-- ============================================================================
+-- PROJECTS (Optional container for tasks)
+-- ============================================================================
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    title VARCHAR(500) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'PLANNING',
+    priority VARCHAR(50) NOT NULL DEFAULT 'MEDIUM',
+    color VARCHAR(7) DEFAULT '#8b5cf6', -- Hex color for calendar display
+
+    -- Ownership
+    creator_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+    -- Scheduling
+    start_date DATE,
+    target_end_date DATE,
+    actual_end_date DATE,
+
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE,
+
+    -- Strategy & Documentation
+    okrs JSONB DEFAULT '[]'::jsonb,
+    vision TEXT,
+    success_criteria TEXT,
+    notes TEXT,
+    resource_links JSONB DEFAULT '[]'::jsonb,
+
+    CONSTRAINT chk_project_status CHECK (status IN ('PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED')),
+    CONSTRAINT chk_project_priority CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+    CONSTRAINT chk_project_dates CHECK (target_end_date IS NULL OR start_date IS NULL OR target_end_date >= start_date),
+    CONSTRAINT chk_project_actual_dates CHECK (actual_end_date IS NULL OR start_date IS NULL OR actual_end_date >= start_date)
+);
+
+CREATE INDEX idx_projects_creator ON projects(creator_id);
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_projects_target_end_date ON projects(target_end_date);
 
 -- ============================================================================
 -- TASKS
@@ -35,6 +79,7 @@ CREATE TABLE tasks (
 
     -- Ownership
     creator_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    project_id UUID REFERENCES projects(id) ON DELETE SET NULL, -- Optional project grouping
 
     -- Scheduling
     start_date DATE,
@@ -58,10 +103,12 @@ CREATE TABLE tasks (
     resource_links JSONB DEFAULT '[]'::jsonb, -- [{title, url}]
 
     CONSTRAINT chk_status CHECK (status IN ('TODO', 'IN_PROGRESS', 'REVIEW', 'COMPLETED', 'OVERDUE', 'POSTPONED', 'FAILED')),
-    CONSTRAINT chk_priority CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL'))
+    CONSTRAINT chk_priority CHECK (priority IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
+    CONSTRAINT chk_task_dates CHECK (due_date IS NULL OR start_date IS NULL OR due_date >= start_date)
 );
 
 CREATE INDEX idx_tasks_creator ON tasks(creator_id);
+CREATE INDEX idx_tasks_project ON tasks(project_id);
 CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_due_date ON tasks(due_date);
 
@@ -246,6 +293,98 @@ CREATE INDEX idx_sessions_token ON sessions(token_hash);
 CREATE INDEX idx_sessions_expires ON sessions(expires_at);
 
 -- ============================================================================
+-- PASSWORD HISTORY (Prevent password reuse)
+-- ============================================================================
+CREATE TABLE password_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    password_hash TEXT NOT NULL, -- Argon2id hash of previous password
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_password_history_user ON password_history(user_id);
+CREATE INDEX idx_password_history_created ON password_history(created_at DESC);
+
+-- ============================================================================
+-- TEAM MEMBERS (Non-platform users for project collaboration)
+-- ============================================================================
+CREATE TABLE team_members (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    role VARCHAR(255),
+    email VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_team_members_project ON team_members(project_id);
+
+-- ============================================================================
+-- TASK BLOCKERS (Track team member blockers for tasks)
+-- ============================================================================
+CREATE TABLE task_blockers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    team_member_id UUID NOT NULL REFERENCES team_members(id) ON DELETE CASCADE,
+    reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    resolved_at TIMESTAMP WITH TIME ZONE,
+
+    CONSTRAINT uq_task_blocker UNIQUE(task_id, team_member_id)
+);
+
+CREATE INDEX idx_task_blockers_task ON task_blockers(task_id);
+CREATE INDEX idx_task_blockers_member ON task_blockers(team_member_id);
+
+-- ============================================================================
+-- PROJECT COMMENTS
+-- ============================================================================
+CREATE TABLE project_comments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    author_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
+    text TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_project_comments_project ON project_comments(project_id);
+CREATE INDEX idx_project_comments_author ON project_comments(author_id);
+
+-- ============================================================================
+-- PROJECT ATTACHMENTS
+-- ============================================================================
+CREATE TABLE project_attachments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name VARCHAR(500) NOT NULL,
+    type VARCHAR(100),
+    url TEXT NOT NULL,
+    size BIGINT,
+    uploaded_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_project_attachments_project ON project_attachments(project_id);
+
+-- ============================================================================
+-- PROJECT ACTIVITY LOG
+-- ============================================================================
+CREATE TABLE project_activity_log (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    user_name VARCHAR(255) NOT NULL,
+    action TEXT NOT NULL,
+    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_project_activity_log_project ON project_activity_log(project_id);
+CREATE INDEX idx_project_activity_log_timestamp ON project_activity_log(timestamp);
+
+-- ============================================================================
 -- AUDIT LOG (Security & Compliance)
 -- ============================================================================
 CREATE TABLE audit_log (
@@ -351,6 +490,15 @@ CREATE TRIGGER update_comments_updated_at BEFORE UPDATE ON comments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_report_schedules_updated_at BEFORE UPDATE ON report_schedules
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_team_members_updated_at BEFORE UPDATE ON team_members
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_project_comments_updated_at BEFORE UPDATE ON project_comments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to auto-set task status to OVERDUE

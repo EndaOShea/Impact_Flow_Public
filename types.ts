@@ -15,6 +15,14 @@ export enum Priority {
   CRITICAL = 'CRITICAL'
 }
 
+export enum ProjectStatus {
+  PLANNING = 'PLANNING',
+  ACTIVE = 'ACTIVE',
+  ON_HOLD = 'ON_HOLD',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED'
+}
+
 export enum ImpactType {
   REVENUE = 'Revenue',
   EFFICIENCY = 'Time Saved (Hours)',
@@ -113,6 +121,26 @@ export interface RecurrenceConfig {
   weekDays?: number[];
 }
 
+export interface TeamMember {
+  id: string;
+  projectId: string;
+  name: string;
+  role?: string;
+  email?: string;
+  notes?: string;
+  createdAt: Date;
+}
+
+export interface TaskBlocker {
+  id: string;
+  taskId: string;
+  teamMemberId: string;
+  teamMemberName?: string;
+  reason?: string;
+  createdAt: Date;
+  resolvedAt?: Date;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -123,6 +151,10 @@ export interface Task {
   // Ownership
   creatorId: string;
 
+  // Project Relationship
+  projectId?: string;
+  projectTitle?: string;
+
   // Scheduling
   startDate?: Date;
   dueDate?: Date;
@@ -131,6 +163,7 @@ export interface Task {
 
   // Relationships
   dependencyIds: string[];
+  blockers?: TaskBlocker[];
 
   // Timestamps
   createdAt: Date;
@@ -158,6 +191,48 @@ export interface Task {
 
   // External Links
   resourceLinks: { title: string; url: string }[];
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  description: string;
+  status: ProjectStatus;
+  priority: Priority;
+  creatorId: string;
+  color?: string; // Hex color for calendar display
+
+  // Dates
+  startDate?: Date;
+  targetEndDate?: Date;
+  actualEndDate?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt?: Date;
+
+  // Strategy & Planning
+  okrs: string[];
+  vision?: string;
+  successCriteria?: string;
+  notes?: string;
+
+  // Relationships
+  teamMembers: TeamMember[];
+  attachments: Attachment[];
+  comments: Comment[];
+  activityLog: ActivityLogEntry[];
+  resourceLinks: { title: string; url: string }[];
+
+  // Computed Metrics (from tasks)
+  totalTasks?: number;
+  completedTasks?: number;
+  progressPercentage?: number;
+  aggregatedImpact?: {
+    revenue: number;
+    timeSaved: number;
+    costReduction: number;
+    csat: number;
+  };
 }
 
 export interface SupportTicket {
@@ -197,4 +272,4 @@ export interface ReportSchedule {
   active: boolean;
 }
 
-export type ViewState = 'DASHBOARD' | 'TASKS' | 'CALENDAR' | 'TIMELINE' | 'SETTINGS' | 'NOTIFICATIONS' | 'REPORTS' | 'ANALYTICS';
+export type ViewState = 'DASHBOARD' | 'TASKS' | 'PROJECTS' | 'CALENDAR' | 'TIMELINE' | 'SETTINGS' | 'NOTIFICATIONS' | 'REPORTS' | 'ANALYTICS';

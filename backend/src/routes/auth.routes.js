@@ -7,12 +7,20 @@ import {
     createSession,
     destroySession,
     generateRecoveryKey,
+    hashRecoveryKey,
+    hashToken,
+    checkPasswordHistory,
+    savePasswordToHistory,
     logAudit
 } from '../utils/auth.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
-import { authRateLimiter } from '../middleware/security.middleware.js';
+import { authRateLimiter, recoveryRateLimiter } from '../middleware/security.middleware.js';
 
 const router = express.Router();
+
+// Password complexity regex - must match frontend validation
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+const PASSWORD_ERROR = 'Password must be at least 8 characters with uppercase, lowercase, number, and special character (@$!%*?&)';
 
 // ============================================================================
 // REGISTER NEW USER
@@ -30,8 +38,8 @@ router.post('/register', authRateLimiter, async (req, res) => {
             return res.status(400).json({ error: 'Username must be 3-50 characters' });
         }
 
-        if (password.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+        if (!PASSWORD_REGEX.test(password)) {
+            return res.status(400).json({ error: PASSWORD_ERROR });
         }
 
         if (email && !validator.isEmail(email)) {
@@ -49,6 +57,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
 
         const passwordHash = await hashPassword(password);
         const recoveryKey = generateRecoveryKey();
+        const recoveryKeyHash = hashRecoveryKey(recoveryKey);
 
         const nameParts = name.trim().split(' ');
         const avatarInitials = nameParts.length >= 2
@@ -58,8 +67,8 @@ router.post('/register', authRateLimiter, async (req, res) => {
         const result = await query(
             `INSERT INTO users (username, password_hash, recovery_key, name, email, avatar_initials)
              VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING id, username, name, email, avatar_initials, recovery_key`,
-            [username.toLowerCase(), passwordHash, recoveryKey, name, email || null, avatarInitials]
+             RETURNING id, username, name, email, avatar_initials`,
+            [username.toLowerCase(), passwordHash, recoveryKeyHash, name, email || null, avatarInitials]
         );
 
         const newUser = result.rows[0];
@@ -73,7 +82,7 @@ router.post('/register', authRateLimiter, async (req, res) => {
                 name: newUser.name,
                 avatarInitials: newUser.avatar_initials
             },
-            recoveryKey: newUser.recovery_key,
+            recoveryKey: recoveryKey,
             message: 'User created successfully. Save your recovery key!'
         });
     } catch (error) {
@@ -86,6 +95,10 @@ router.post('/register', authRateLimiter, async (req, res) => {
 // LOGIN
 // ============================================================================
 
+// Account lockout configuration
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MINUTES = 15;
+
 router.post('/login', authRateLimiter, async (req, res) => {
     try {
         const { username, password } = req.body;
@@ -95,7 +108,8 @@ router.post('/login', authRateLimiter, async (req, res) => {
         }
 
         const result = await query(
-            `SELECT id, username, password_hash, name, email, avatar_initials
+            `SELECT id, username, password_hash, name, email, avatar_initials,
+                    failed_login_attempts, locked_until
              FROM users
              WHERE username = $1`,
             [username.toLowerCase()]
@@ -107,16 +121,60 @@ router.post('/login', authRateLimiter, async (req, res) => {
 
         const user = result.rows[0];
 
+        // Check if account is locked
+        if (user.locked_until && new Date(user.locked_until) > new Date()) {
+            const remainingMinutes = Math.ceil((new Date(user.locked_until) - new Date()) / 60000);
+            await logAudit(user.id, 'LOGIN_BLOCKED', 'user', user.id, { reason: 'account_locked' }, req.ip, req.get('user-agent'));
+            return res.status(423).json({
+                error: `Account is temporarily locked. Try again in ${remainingMinutes} minute(s).`,
+                lockedUntil: user.locked_until
+            });
+        }
+
         const isValid = await verifyPassword(password, user.password_hash);
 
         if (!isValid) {
-            await logAudit(user.id, 'LOGIN_FAILED', 'user', user.id, { reason: 'invalid_password' }, req.ip, req.get('user-agent'));
-            return res.status(401).json({ error: 'Invalid username or password' });
+            // Increment failed attempts
+            const newFailedAttempts = (user.failed_login_attempts || 0) + 1;
+            let lockUntil = null;
+
+            // Lock account if max attempts reached
+            if (newFailedAttempts >= MAX_FAILED_ATTEMPTS) {
+                lockUntil = new Date(Date.now() + LOCKOUT_DURATION_MINUTES * 60 * 1000);
+                await logAudit(user.id, 'ACCOUNT_LOCKED', 'user', user.id,
+                    { failed_attempts: newFailedAttempts, locked_for_minutes: LOCKOUT_DURATION_MINUTES },
+                    req.ip, req.get('user-agent'));
+            }
+
+            await query(
+                'UPDATE users SET failed_login_attempts = $1, locked_until = $2 WHERE id = $3',
+                [newFailedAttempts, lockUntil, user.id]
+            );
+
+            await logAudit(user.id, 'LOGIN_FAILED', 'user', user.id,
+                { reason: 'invalid_password', attempt: newFailedAttempts },
+                req.ip, req.get('user-agent'));
+
+            const attemptsRemaining = MAX_FAILED_ATTEMPTS - newFailedAttempts;
+            if (attemptsRemaining > 0) {
+                return res.status(401).json({
+                    error: `Invalid username or password. ${attemptsRemaining} attempt(s) remaining before lockout.`
+                });
+            } else {
+                return res.status(423).json({
+                    error: `Account locked for ${LOCKOUT_DURATION_MINUTES} minutes due to too many failed attempts.`,
+                    lockedUntil: lockUntil
+                });
+            }
         }
 
+        // Successful login - reset failed attempts
         const sessionToken = await createSession(user.id, req.ip, req.get('user-agent'));
 
-        await query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
+        await query(
+            'UPDATE users SET last_login = NOW(), failed_login_attempts = 0, locked_until = NULL WHERE id = $1',
+            [user.id]
+        );
 
         await logAudit(user.id, 'LOGIN_SUCCESS', 'user', user.id, null, req.ip, req.get('user-agent'));
 
@@ -182,7 +240,7 @@ router.get('/me', requireAuth, async (req, res) => {
 // PASSWORD RESET
 // ============================================================================
 
-router.post('/reset-password', authRateLimiter, async (req, res) => {
+router.post('/reset-password', recoveryRateLimiter, async (req, res) => {
     try {
         const { recoveryKey, newPassword } = req.body;
 
@@ -190,13 +248,15 @@ router.post('/reset-password', authRateLimiter, async (req, res) => {
             return res.status(400).json({ error: 'Recovery key and new password are required' });
         }
 
-        if (newPassword.length < 8) {
-            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+        if (!PASSWORD_REGEX.test(newPassword)) {
+            return res.status(400).json({ error: PASSWORD_ERROR });
         }
 
+        const recoveryKeyHash = hashRecoveryKey(recoveryKey);
+
         const result = await query(
-            'SELECT id, username FROM users WHERE recovery_key = $1',
-            [recoveryKey]
+            'SELECT id, username, password_hash FROM users WHERE recovery_key = $1',
+            [recoveryKeyHash]
         );
 
         if (result.rows.length === 0) {
@@ -204,6 +264,22 @@ router.post('/reset-password', authRateLimiter, async (req, res) => {
         }
 
         const user = result.rows[0];
+
+        // Check if new password matches current password
+        const matchesCurrent = await verifyPassword(newPassword, user.password_hash);
+        if (matchesCurrent) {
+            return res.status(400).json({ error: 'New password must be different from current password' });
+        }
+
+        // Check password history
+        const inHistory = await checkPasswordHistory(user.id, newPassword);
+        if (inHistory) {
+            return res.status(400).json({ error: 'Cannot reuse one of your last 5 passwords' });
+        }
+
+        // Save current password to history before resetting
+        await savePasswordToHistory(user.id, user.password_hash);
+
         const passwordHash = await hashPassword(newPassword);
 
         await query(
@@ -234,8 +310,8 @@ router.post('/change-password', requireAuth, async (req, res) => {
             return res.status(400).json({ error: 'Current and new password are required' });
         }
 
-        if (newPassword.length < 8) {
-            return res.status(400).json({ error: 'New password must be at least 8 characters' });
+        if (!PASSWORD_REGEX.test(newPassword)) {
+            return res.status(400).json({ error: PASSWORD_ERROR });
         }
 
         const result = await query(
@@ -249,6 +325,21 @@ router.post('/change-password', requireAuth, async (req, res) => {
         if (!isValid) {
             return res.status(401).json({ error: 'Current password is incorrect' });
         }
+
+        // Check if new password matches current password
+        const matchesCurrent = await verifyPassword(newPassword, user.password_hash);
+        if (matchesCurrent) {
+            return res.status(400).json({ error: 'New password must be different from current password' });
+        }
+
+        // Check password history
+        const inHistory = await checkPasswordHistory(req.user.id, newPassword);
+        if (inHistory) {
+            return res.status(400).json({ error: 'Cannot reuse one of your last 5 passwords' });
+        }
+
+        // Save current password to history before changing
+        await savePasswordToHistory(req.user.id, user.password_hash);
 
         const passwordHash = await hashPassword(newPassword);
 
@@ -311,6 +402,101 @@ router.delete('/account', requireAuth, async (req, res) => {
     } catch (error) {
         console.error('Delete account error:', error);
         res.status(500).json({ error: 'Failed to delete account' });
+    }
+});
+
+// ============================================================================
+// SESSION MANAGEMENT
+// ============================================================================
+
+// Get all active sessions for current user
+router.get('/sessions', requireAuth, async (req, res) => {
+    try {
+        const currentToken = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const currentTokenHash = currentToken ? hashToken(currentToken) : null;
+
+        const result = await query(
+            `SELECT id, ip_address, user_agent, created_at, last_activity, expires_at,
+                    (token_hash = $2) as is_current
+             FROM sessions
+             WHERE user_id = $1 AND expires_at > NOW()
+             ORDER BY last_activity DESC`,
+            [req.user.id, currentTokenHash]
+        );
+
+        const sessions = result.rows.map(session => ({
+            id: session.id,
+            ipAddress: session.ip_address,
+            userAgent: session.user_agent,
+            createdAt: session.created_at,
+            lastActivity: session.last_activity,
+            expiresAt: session.expires_at,
+            isCurrent: session.is_current
+        }));
+
+        res.json({ sessions });
+    } catch (error) {
+        console.error('Get sessions error:', error);
+        res.status(500).json({ error: 'Failed to get sessions' });
+    }
+});
+
+// Revoke a specific session
+router.delete('/sessions/:sessionId', requireAuth, async (req, res) => {
+    try {
+        const { sessionId } = req.params;
+        const currentToken = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const currentTokenHash = currentToken ? hashToken(currentToken) : null;
+
+        // Check if session exists and belongs to user
+        const sessionResult = await query(
+            'SELECT id, token_hash FROM sessions WHERE id = $1 AND user_id = $2',
+            [sessionId, req.user.id]
+        );
+
+        if (sessionResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Session not found' });
+        }
+
+        const session = sessionResult.rows[0];
+
+        // Prevent revoking current session via this endpoint
+        if (session.token_hash === currentTokenHash) {
+            return res.status(400).json({ error: 'Cannot revoke current session. Use logout instead.' });
+        }
+
+        await query('DELETE FROM sessions WHERE id = $1', [sessionId]);
+
+        await logAudit(req.user.id, 'SESSION_REVOKED', 'session', sessionId, null, req.ip, req.get('user-agent'));
+
+        res.json({ message: 'Session revoked successfully' });
+    } catch (error) {
+        console.error('Revoke session error:', error);
+        res.status(500).json({ error: 'Failed to revoke session' });
+    }
+});
+
+// Revoke all sessions except current
+router.delete('/sessions', requireAuth, async (req, res) => {
+    try {
+        const currentToken = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const currentTokenHash = currentToken ? hashToken(currentToken) : null;
+
+        const result = await query(
+            'DELETE FROM sessions WHERE user_id = $1 AND token_hash != $2',
+            [req.user.id, currentTokenHash]
+        );
+
+        await logAudit(req.user.id, 'ALL_SESSIONS_REVOKED', 'session', null,
+            { count: result.rowCount }, req.ip, req.get('user-agent'));
+
+        res.json({
+            message: 'All other sessions revoked successfully',
+            revokedCount: result.rowCount
+        });
+    } catch (error) {
+        console.error('Revoke all sessions error:', error);
+        res.status(500).json({ error: 'Failed to revoke sessions' });
     }
 });
 

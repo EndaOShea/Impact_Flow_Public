@@ -2,16 +2,18 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   LayoutDashboard, CheckSquare, Plus, GitGraph, BarChart2, Calendar as CalendarIcon,
   Settings, Bell, Search, Filter, ArrowUpDown, ChevronDown, Check, Menu, X,
-  LogOut, Activity, AlertTriangle, Trash2, Lock, Eye, EyeOff
+  LogOut, Activity, AlertTriangle, Trash2, Lock, Eye, EyeOff, Briefcase
 } from 'lucide-react';
 import { TaskModal } from './components/TaskModal';
+import { ProjectModal } from './components/ProjectModal';
+import { ProjectsView } from './components/ProjectsView';
 import { ImpactChart } from './components/ImpactChart';
 import { CalendarView } from './components/CalendarView';
 import { TimelineView } from './components/TimelineView';
 import { SystemReport } from './components/SystemReport';
 import { AuthScreen } from './components/AuthScreen';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
-import { Task, TaskStatus, Priority, User, ViewState, WorkCategory } from './types';
+import { Task, TaskStatus, Priority, User, ViewState, WorkCategory, Project } from './types';
 import { api } from './services/api';
 import { AnalyticsService, trackEvent } from './services/analytics';
 
@@ -19,6 +21,7 @@ export const App: React.FC = () => {
   // --- AUTH & DATA STATE ---
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
 
   // --- UI STATE ---
   const [view, setView] = useState<ViewState>('DASHBOARD');
@@ -32,6 +35,8 @@ export const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [projectToEdit, setProjectToEdit] = useState<Project | undefined>(undefined);
   const [mutedTaskIds, setMutedTaskIds] = useState<string[]>([]);
   const [isDeleteAccountModalOpen, setIsDeleteAccountModalOpen] = useState(false);
   const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
@@ -49,6 +54,7 @@ export const App: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'ALL'>('ALL');
   const [filterPriority, setFilterPriority] = useState<Priority | 'ALL'>('ALL');
   const [filterDate, setFilterDate] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'UPCOMING'>('UPCOMING');
+  const [filterProject, setFilterProject] = useState<string>('ALL');
 
   // Track filter changes
   useEffect(() => {
@@ -123,7 +129,10 @@ export const App: React.FC = () => {
     if (!currentUser) return;
 
     try {
-        const allTasks = await api.getTasks();
+        const [allTasks, allProjects] = await Promise.all([
+            api.getTasks(),
+            api.getProjects()
+        ]);
 
         // Auto-update OVERDUE status
         const now = new Date();
@@ -140,6 +149,7 @@ export const App: React.FC = () => {
         });
 
         setTasks(processedTasks);
+        setProjects(allProjects);
     } catch (error) {
         console.error('Error refreshing data:', error);
     }
@@ -172,6 +182,7 @@ export const App: React.FC = () => {
     localStorage.removeItem('impactflow_current_user');
     setView('DASHBOARD');
     setTasks([]);
+    setProjects([]);
   };
 
   const handleDeleteAccount = async () => {
@@ -191,6 +202,7 @@ export const App: React.FC = () => {
       // Clear all local data
       setCurrentUser(null);
       setTasks([]);
+      setProjects([]);
       setView('DASHBOARD');
       localStorage.clear();
 
@@ -247,7 +259,16 @@ export const App: React.FC = () => {
         result = result.filter(t => t.priority === filterPriority);
     }
 
-    // 3. Date Filter
+    // 3. Project Filter
+    if (filterProject !== 'ALL') {
+        if (filterProject === 'NONE') {
+            result = result.filter(t => !t.projectId);
+        } else {
+            result = result.filter(t => t.projectId === filterProject);
+        }
+    }
+
+    // 4. Date Filter
     const today = new Date();
     today.setHours(0,0,0,0);
 
@@ -287,7 +308,7 @@ export const App: React.FC = () => {
         });
     }
 
-    // 4. Sorting
+    // 5. Sorting
     result.sort((a, b) => {
         const dateA = a.dueDate ? new Date(a.dueDate).getTime() : (sortOrder === 'ASC' ? 9999999999999 : 0);
         const dateB = b.dueDate ? new Date(b.dueDate).getTime() : (sortOrder === 'ASC' ? 9999999999999 : 0);
@@ -300,7 +321,12 @@ export const App: React.FC = () => {
     });
 
     return result;
-  }, [tasks, filterStatus, filterPriority, filterDate, sortOrder]);
+  }, [tasks, filterStatus, filterPriority, filterProject, filterDate, sortOrder]);
+
+  // Standalone tasks (not associated with any project) - for Tasks view
+  const standaloneTasks = useMemo(() => {
+    return filteredTasks.filter(t => !t.projectId);
+  }, [filteredTasks]);
 
 
   // --- NOTIFICATIONS LOGIC ---
@@ -381,6 +407,17 @@ export const App: React.FC = () => {
     refreshData();
   };
 
+  const handleSaveProject = async (updatedProject: Project) => {
+    const isExistingProject = updatedProject.id && projects.some(p => p.id === updatedProject.id);
+
+    if (isExistingProject) {
+        await api.updateProject(updatedProject.id, updatedProject);
+    } else {
+        await api.createProject(updatedProject);
+    }
+    refreshData();
+  };
+
   if (!currentUser) {
     return <AuthScreen onLogin={handleLogin} />;
   }
@@ -412,8 +449,11 @@ export const App: React.FC = () => {
           <button onClick={() => setView('DASHBOARD')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'DASHBOARD' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800'}`}>
             <LayoutDashboard className="w-5 h-5" /> Dashboard
           </button>
+          <button onClick={() => setView('PROJECTS')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'PROJECTS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800'}`}>
+            <Briefcase className="w-5 h-5" /> Projects
+          </button>
           <button onClick={() => setView('TASKS')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'TASKS' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800'}`}>
-            <CheckSquare className="w-5 h-5" /> All Tasks
+            <CheckSquare className="w-5 h-5" /> Tasks
           </button>
           <button onClick={() => setView('CALENDAR')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${view === 'CALENDAR' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20' : 'hover:bg-slate-800'}`}>
             <CalendarIcon className="w-5 h-5" /> Calendar
@@ -464,7 +504,8 @@ export const App: React.FC = () => {
             <div className="hidden md:block">
               <h1 className="text-xl font-bold text-slate-800">
                 {view === 'DASHBOARD' ? 'Dashboard' :
-                 view === 'TASKS' ? 'All Tasks' :
+                 view === 'PROJECTS' ? 'Projects' :
+                 view === 'TASKS' ? 'Tasks' :
                  view === 'CALENDAR' ? 'Calendar' :
                  view === 'TIMELINE' ? 'Timeline' :
                  view === 'SETTINGS' ? 'Settings' :
@@ -476,13 +517,23 @@ export const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-4">
-             <button
-                onClick={() => { setTaskToEdit(undefined); setIsTaskModalOpen(true); }}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow-md shadow-blue-600/20 transition-all active:scale-95"
-            >
-                <Plus className="w-4 h-4" />
-                <span className="hidden sm:inline">New Task</span>
-            </button>
+             {view === 'PROJECTS' ? (
+               <button
+                  onClick={() => { setProjectToEdit(undefined); setIsProjectModalOpen(true); }}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow-md shadow-blue-600/20 transition-all active:scale-95"
+              >
+                  <Plus className="w-4 h-4" />
+                  <span className="hidden sm:inline">New Project</span>
+              </button>
+             ) : (
+               <button
+                  onClick={() => { setTaskToEdit(undefined); setIsTaskModalOpen(true); }}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow-md shadow-blue-600/20 transition-all active:scale-95"
+              >
+                  <Plus className="w-4 h-4" />
+                  <span className="hidden sm:inline">New Task</span>
+              </button>
+             )}
           </div>
         </header>
 
@@ -542,6 +593,23 @@ export const App: React.FC = () => {
                         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                     </div>
 
+                    {view === 'DASHBOARD' && (
+                        <div className="relative group">
+                            <select
+                                value={filterProject}
+                                onChange={(e) => setFilterProject(e.target.value)}
+                                className="appearance-none bg-white border border-slate-200 text-black text-sm rounded-lg focus:ring-purple-500 focus:border-purple-500 block w-full px-4 py-2 pr-8 cursor-pointer font-medium"
+                            >
+                                <option value="ALL">Project: All</option>
+                                <option value="NONE">No Project</option>
+                                {projects.map(p => (
+                                    <option key={p.id} value={p.id}>{p.title}</option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                        </div>
+                    )}
+
                     <div className="ml-auto flex items-center gap-2">
                         <button
                             onClick={() => setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC')}
@@ -557,6 +625,79 @@ export const App: React.FC = () => {
             {view === 'DASHBOARD' && (
                 <div className="animate-in fade-in duration-500">
                     <ImpactChart tasks={filteredTasks} />
+
+                    {/* Active Projects Section */}
+                    {projects.length > 0 && (
+                        <div className="mb-8">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <Briefcase className="w-5 h-5 text-purple-500" /> Active Projects
+                                </h2>
+                                <button
+                                    onClick={() => setView('PROJECTS')}
+                                    className="text-sm text-blue-600 hover:underline font-medium"
+                                >
+                                    View All Projects
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                {projects
+                                    .filter(p => p.status !== 'COMPLETED' && p.status !== 'CANCELLED')
+                                    .slice(0, 4)
+                                    .map(project => {
+                                        const projectTasks = tasks.filter(t => t.projectId === project.id);
+                                        const completedTasks = projectTasks.filter(t => t.status === TaskStatus.COMPLETED).length;
+                                        const totalTasks = projectTasks.length;
+                                        const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+
+                                        return (
+                                            <div
+                                                key={project.id}
+                                                onClick={() => { setProjectToEdit(project); setIsProjectModalOpen(true); }}
+                                                className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-purple-300 transition-all cursor-pointer group"
+                                            >
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                                        <Briefcase className="w-5 h-5 text-purple-600" />
+                                                    </div>
+                                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider
+                                                        ${project.status === 'ACTIVE' ? 'bg-green-100 text-green-600' :
+                                                          project.status === 'PLANNING' ? 'bg-blue-100 text-blue-600' :
+                                                          project.status === 'ON_HOLD' ? 'bg-orange-100 text-orange-600' :
+                                                          'bg-slate-100 text-slate-600'}`}>
+                                                        {project.status.replace('_', ' ')}
+                                                    </span>
+                                                </div>
+                                                <h3 className="font-bold text-slate-800 mb-2 line-clamp-1 group-hover:text-purple-600 transition-colors">
+                                                    {project.title}
+                                                </h3>
+                                                {project.description && (
+                                                    <p className="text-xs text-slate-500 mb-3 line-clamp-2">{project.description}</p>
+                                                )}
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                                        <div
+                                                            className="h-full bg-purple-500 rounded-full transition-all"
+                                                            style={{ width: `${progress}%` }}
+                                                        ></div>
+                                                    </div>
+                                                    <span className="text-xs text-slate-400 font-medium">{progress}%</span>
+                                                </div>
+                                                <div className="text-xs text-slate-400">
+                                                    {totalTasks} {totalTasks === 1 ? 'task' : 'tasks'} · {completedTasks} done
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+                            {projects.filter(p => p.status !== 'COMPLETED' && p.status !== 'CANCELLED').length === 0 && (
+                                <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
+                                    <Briefcase className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                                    <p className="text-slate-500 text-sm">No active projects</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center gap-2">
                         <CheckSquare className="w-5 h-5 text-blue-500" /> Active Tasks
@@ -652,7 +793,13 @@ export const App: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {filteredTasks.map(task => {
+                                {standaloneTasks.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="p-8 text-center text-slate-400">
+                                            No standalone tasks found. Tasks associated with projects appear in the Projects tab.
+                                        </td>
+                                    </tr>
+                                ) : standaloneTasks.map(task => {
                                     const revenue = task.impactMetrics.find(m => m.type === 'Revenue');
                                     const lastStatusLog = task.activityLog
                                         ?.filter(l => l.action.toLowerCase().includes('status'))
@@ -709,15 +856,37 @@ export const App: React.FC = () => {
                 </div>
             )}
 
+            {view === 'PROJECTS' && (
+                <div className="animate-in fade-in">
+                    <ProjectsView
+                        projects={projects}
+                        tasks={tasks}
+                        onProjectClick={(p) => { setProjectToEdit(p); setIsProjectModalOpen(true); }}
+                        onTaskClick={(t) => { setTaskToEdit(t); setIsTaskModalOpen(true); }}
+                    />
+                </div>
+            )}
+
             {view === 'CALENDAR' && (
                 <div className="animate-in fade-in">
-                    <CalendarView tasks={filteredTasks} onTaskClick={(t) => { setTaskToEdit(t); setIsTaskModalOpen(true); }} />
+                    <CalendarView
+                        tasks={filteredTasks}
+                        projects={projects}
+                        onTaskClick={(t) => { setTaskToEdit(t); setIsTaskModalOpen(true); }}
+                        onProjectClick={(p) => { setProjectToEdit(p); setIsProjectModalOpen(true); }}
+                    />
                 </div>
             )}
 
             {view === 'TIMELINE' && (
                 <div className="animate-in fade-in">
-                    <TimelineView tasks={filteredTasks} users={[currentUser]} onTaskClick={(t) => { setTaskToEdit(t); setIsTaskModalOpen(true); }} />
+                    <TimelineView
+                        tasks={filteredTasks}
+                        users={[currentUser]}
+                        projects={projects}
+                        onTaskClick={(t) => { setTaskToEdit(t); setIsTaskModalOpen(true); }}
+                        onProjectClick={(p) => { setProjectToEdit(p); setIsProjectModalOpen(true); }}
+                    />
                 </div>
             )}
 
@@ -855,7 +1024,7 @@ export const App: React.FC = () => {
             )}
 
             {view === 'REPORTS' && (
-                <SystemReport tasks={tasks} />
+                <SystemReport tasks={tasks} projects={projects} />
             )}
 
             {view === 'NOTIFICATIONS' && (
@@ -917,6 +1086,16 @@ export const App: React.FC = () => {
         onSave={handleSaveTask}
         taskToEdit={taskToEdit}
         allTasks={tasks}
+        projects={projects}
+        currentUser={currentUser}
+      />
+
+      {/* Project Modal */}
+      <ProjectModal
+        isOpen={isProjectModalOpen}
+        onClose={() => setIsProjectModalOpen(false)}
+        onSave={handleSaveProject}
+        projectToEdit={projectToEdit}
         currentUser={currentUser}
       />
 

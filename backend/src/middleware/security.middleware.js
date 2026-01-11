@@ -49,6 +49,16 @@ export const authRateLimiter = rateLimit({
     }
 });
 
+// Very strict rate limiting for password reset (recovery key has limited entropy)
+export const recoveryRateLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 3, // 3 attempts per hour
+    message: { error: 'Too many password reset attempts, please try again later' },
+    keyGenerator: (req) => {
+        return req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    }
+});
+
 // Request logging middleware
 export const requestLogger = (req, res, next) => {
     const start = Date.now();

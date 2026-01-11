@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Task, ImpactType, TaskStatus, ReportSchedule } from '../types';
+import { Task, ImpactType, TaskStatus, ReportSchedule, Project, ProjectStatus } from '../types';
 import {
     Calendar, Printer, TrendingUp, Clock, CheckCircle2,
     DollarSign, BarChart2, PieChart as PieChartIcon, ArrowUpRight, ArrowDownRight,
-    PlayCircle, Mail, Plus, Trash, Clock as ClockIcon, CalendarDays, Repeat, Info, HelpCircle, Check
+    PlayCircle, Mail, Plus, Trash, Clock as ClockIcon, CalendarDays, Repeat, Info, HelpCircle, Check, Briefcase, ChevronDown, ChevronRight
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -13,12 +13,14 @@ import { api } from '../services/api';
 
 interface SystemReportProps {
   tasks: Task[];
+  projects: Project[];
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
 
-export const SystemReport: React.FC<SystemReportProps> = ({ tasks }) => {
+export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) => {
   const [activeTab, setActiveTab] = useState<'GENERATE' | 'SCHEDULE'>('GENERATE');
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(new Set());
 
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -176,10 +178,30 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks }) => {
     if (!startDate || !endDate) return null;
     const startObj = new Date(startDate); startObj.setHours(0,0,0,0);
     const endObj = new Date(endDate); endObj.setHours(23,59,59,999);
-    const completedInPeriod = tasks.filter(t => t.status === TaskStatus.COMPLETED && t.completedAt && new Date(t.completedAt) >= startObj && new Date(t.completedAt) <= endObj);
+
+    // Filter completed projects in period
+    const completedProjects = projects.filter(p =>
+      p.status === ProjectStatus.COMPLETED &&
+      p.actualEndDate &&
+      new Date(p.actualEndDate) >= startObj &&
+      new Date(p.actualEndDate) <= endObj
+    );
+
+    // Only show standalone tasks (tasks without projectId) in the "Completed Tasks Breakdown" section
+    const completedInPeriod = tasks.filter(t =>
+      t.status === TaskStatus.COMPLETED &&
+      t.completedAt &&
+      new Date(t.completedAt) >= startObj &&
+      new Date(t.completedAt) <= endObj &&
+      !t.projectId  // Exclude project tasks
+    );
+
     const createdInPeriod = tasks.filter(t => new Date(t.createdAt) >= startObj && new Date(t.createdAt) <= endObj);
     const dueInPeriod = tasks.filter(t => t.dueDate && new Date(t.dueDate) >= startObj && new Date(t.dueDate) <= endObj);
+
     let totalRevenue = 0; let totalTimeSaved = 0; let totalHoursLogged = 0;
+
+    // Calculate metrics from standalone tasks
     completedInPeriod.forEach(t => {
         totalHoursLogged += t.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
         t.impactMetrics.forEach(m => {
@@ -210,10 +232,11 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks }) => {
 
     return {
         completed: completedInPeriod, created: createdInPeriod, due: dueInPeriod,
+        completedProjects,
         metrics: { revenue: totalRevenue, timeSaved: totalTimeSaved, hoursLogged: totalHoursLogged, completionRate: dueInPeriod.length > 0 ? Math.round((completedInPeriod.length / dueInPeriod.length) * 100) : 0 },
         charts: { statusDistribution, categoryDistribution }
     };
-  }, [tasks, startDate, endDate]);
+  }, [tasks, projects, startDate, endDate]);
 
   const handlePrint = () => window.print();
 
@@ -238,6 +261,18 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks }) => {
       const s = ["th", "st", "nd", "rd"];
       const v = n % 100;
       return s[(v - 20) % 10] || s[v] || s[0];
+  };
+
+  const toggleProjectExpanded = (projectId: string) => {
+    setExpandedProjectIds(prev => {
+      const next = new Set(prev);
+      if (next.has(projectId)) {
+        next.delete(projectId);
+      } else {
+        next.add(projectId);
+      }
+      return next;
+    });
   };
 
   return (
@@ -498,6 +533,237 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks }) => {
                                                             )}
                                                         </div>
                                                     )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Completed Projects Section */}
+                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mt-8 print:break-before-page">
+                        <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <Briefcase className="w-5 h-5 text-purple-500" />
+                            Completed Projects
+                        </h3>
+
+                        {reportData.completedProjects.length === 0 ? (
+                            <div className="text-center py-12 text-slate-400">
+                                <p>No projects completed in this period.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                {reportData.completedProjects.map((project, index) => {
+                                    const projectTasks = tasks.filter(t => t.projectId === project.id);
+                                    const completedTasks = projectTasks.filter(t => t.status === TaskStatus.COMPLETED);
+                                    const totalProjectHours = projectTasks.reduce((sum, t) =>
+                                        sum + t.subtasks.reduce((tSum, s) => tSum + s.hoursSpent, 0), 0
+                                    );
+                                    const isExpanded = expandedProjectIds.has(project.id);
+
+                                    return (
+                                        <div key={project.id} className="border border-purple-200 rounded-xl p-6 hover:shadow-md transition-shadow print:break-inside-avoid bg-purple-50/30">
+                                            {/* Project Header */}
+                                            <div className="flex items-start justify-between mb-4">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <span className="text-xs font-bold text-purple-400">#{index + 1}</span>
+                                                        <h4 className="text-lg font-bold text-purple-800 flex items-center gap-2">
+                                                            <Briefcase className="w-5 h-5" />
+                                                            {project.title}
+                                                        </h4>
+                                                    </div>
+                                                    {project.description && (
+                                                        <p className="text-sm text-slate-600 mb-3">{project.description}</p>
+                                                    )}
+                                                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                                                        <span className="flex items-center gap-1">
+                                                            <Calendar className="w-3 h-3" />
+                                                            Completed: {project.actualEndDate ? new Date(project.actualEndDate).toLocaleDateString() : 'N/A'}
+                                                        </span>
+                                                        <span className="flex items-center gap-1">
+                                                            <Clock className="w-3 h-3" />
+                                                            {totalProjectHours.toFixed(1)} hours logged
+                                                        </span>
+                                                        <span className="flex items-center gap-1">
+                                                            <CheckCircle2 className="w-3 h-3" />
+                                                            {projectTasks.length} {projectTasks.length === 1 ? 'task' : 'tasks'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                                        project.priority === 'CRITICAL' ? 'bg-red-100 text-red-700' :
+                                                        project.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
+                                                        project.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
+                                                        'bg-green-100 text-green-700'
+                                                    }`}>
+                                                        {project.priority}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Project Stats */}
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                                <div className="bg-white p-3 rounded-lg border border-purple-100">
+                                                    <p className="text-xs text-slate-500 font-medium mb-1">Total Tasks</p>
+                                                    <p className="text-xl font-bold text-slate-800">{projectTasks.length}</p>
+                                                </div>
+                                                <div className="bg-white p-3 rounded-lg border border-purple-100">
+                                                    <p className="text-xs text-slate-500 font-medium mb-1">Completed</p>
+                                                    <p className="text-xl font-bold text-green-600">{completedTasks.length}</p>
+                                                </div>
+                                                <div className="bg-white p-3 rounded-lg border border-purple-100">
+                                                    <p className="text-xs text-slate-500 font-medium mb-1">Total Hours</p>
+                                                    <p className="text-xl font-bold text-blue-600">{totalProjectHours.toFixed(1)}h</p>
+                                                </div>
+                                                <div className="bg-white p-3 rounded-lg border border-purple-100">
+                                                    <p className="text-xs text-slate-500 font-medium mb-1">Completion</p>
+                                                    <p className="text-xl font-bold text-purple-600">
+                                                        {projectTasks.length > 0 ? Math.round((completedTasks.length / projectTasks.length) * 100) : 0}%
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Aggregated Impact */}
+                                            {project.aggregatedImpact && (
+                                                <div className="mb-4 bg-gradient-to-r from-emerald-50 to-blue-50 p-4 rounded-lg border border-emerald-100">
+                                                    <h5 className="text-xs font-bold text-slate-700 uppercase mb-3 flex items-center gap-2">
+                                                        <TrendingUp className="w-4 h-4 text-emerald-600" />
+                                                        Project Impact Summary
+                                                    </h5>
+                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                        {project.aggregatedImpact.revenue > 0 && (
+                                                            <div className="bg-white p-3 rounded-lg border border-emerald-200">
+                                                                <p className="text-xs text-slate-500 mb-1">Revenue</p>
+                                                                <p className="text-lg font-bold text-green-600">
+                                                                    ${project.aggregatedImpact.revenue.toLocaleString()}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {project.aggregatedImpact.timeSaved > 0 && (
+                                                            <div className="bg-white p-3 rounded-lg border border-blue-200">
+                                                                <p className="text-xs text-slate-500 mb-1">Time Saved</p>
+                                                                <p className="text-lg font-bold text-blue-600">
+                                                                    {project.aggregatedImpact.timeSaved.toFixed(1)}h
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {project.aggregatedImpact.costReduction > 0 && (
+                                                            <div className="bg-white p-3 rounded-lg border border-purple-200">
+                                                                <p className="text-xs text-slate-500 mb-1">Cost Saved</p>
+                                                                <p className="text-lg font-bold text-purple-600">
+                                                                    ${project.aggregatedImpact.costReduction.toLocaleString()}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {project.aggregatedImpact.csat > 0 && (
+                                                            <div className="bg-white p-3 rounded-lg border border-orange-200">
+                                                                <p className="text-xs text-slate-500 mb-1">CSAT</p>
+                                                                <p className="text-lg font-bold text-orange-600">
+                                                                    {project.aggregatedImpact.csat.toFixed(1)}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Toggle Tasks Button */}
+                                            {projectTasks.length > 0 && (
+                                                <button
+                                                    onClick={() => toggleProjectExpanded(project.id)}
+                                                    className="w-full mt-4 py-2 px-4 bg-purple-100 hover:bg-purple-200 border border-purple-200 rounded-lg text-sm font-bold text-purple-700 flex items-center justify-center gap-2 transition-colors"
+                                                >
+                                                    {isExpanded ? (
+                                                        <>
+                                                            <ChevronDown className="w-4 h-4" />
+                                                            Hide Tasks ({projectTasks.length})
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <ChevronRight className="w-4 h-4" />
+                                                            View Tasks ({projectTasks.length})
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+
+                                            {/* Expanded Task List */}
+                                            {isExpanded && projectTasks.length > 0 && (
+                                                <div className="mt-4 border-t border-purple-200 pt-4 space-y-3">
+                                                    {projectTasks.map((task) => {
+                                                        const taskHours = task.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
+                                                        const completedSubtasks = task.subtasks.filter(s => s.completed).length;
+                                                        const taskProgress = task.subtasks.length > 0
+                                                            ? Math.round((completedSubtasks / task.subtasks.length) * 100)
+                                                            : 100;
+
+                                                        return (
+                                                            <div key={task.id} className="bg-white border border-purple-100 rounded-lg p-4 print:break-inside-avoid">
+                                                                <div className="flex items-start justify-between mb-2">
+                                                                    <div className="flex-1">
+                                                                        <h5 className="font-bold text-slate-800 mb-1">{task.title}</h5>
+                                                                        {task.description && (
+                                                                            <p className="text-xs text-slate-600 mb-2">{task.description}</p>
+                                                                        )}
+                                                                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                                                                            <span className="flex items-center gap-1">
+                                                                                <Clock className="w-3 h-3" />
+                                                                                {taskHours.toFixed(1)}h logged
+                                                                            </span>
+                                                                            <span className={`px-2 py-0.5 rounded-full font-bold ${
+                                                                                task.status === TaskStatus.COMPLETED ? 'bg-green-100 text-green-700' :
+                                                                                task.status === TaskStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' :
+                                                                                'bg-slate-100 text-slate-600'
+                                                                            }`}>
+                                                                                {task.status.replace('_', ' ')}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                                        task.priority === 'CRITICAL' ? 'bg-red-100 text-red-700' :
+                                                                        task.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
+                                                                        task.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
+                                                                        'bg-green-100 text-green-700'
+                                                                    }`}>
+                                                                        {task.priority}
+                                                                    </span>
+                                                                </div>
+
+                                                                {/* Task Subtasks */}
+                                                                {task.subtasks.length > 0 && (
+                                                                    <div className="mt-3 bg-slate-50 rounded-lg p-3 border border-slate-100">
+                                                                        <div className="flex items-center justify-between mb-2">
+                                                                            <p className="text-xs font-bold text-slate-600">
+                                                                                Subtasks ({completedSubtasks}/{task.subtasks.length})
+                                                                            </p>
+                                                                            <p className="text-xs font-bold text-purple-600">{taskProgress}%</p>
+                                                                        </div>
+                                                                        <div className="space-y-1.5">
+                                                                            {task.subtasks.map(subtask => (
+                                                                                <div key={subtask.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-slate-100">
+                                                                                    <div className="flex items-center gap-2 flex-1">
+                                                                                        {subtask.completed ? (
+                                                                                            <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />
+                                                                                        ) : (
+                                                                                            <div className="w-3 h-3 rounded-full border-2 border-slate-300 flex-shrink-0" />
+                                                                                        )}
+                                                                                        <span className={subtask.completed ? 'text-slate-500 line-through' : 'text-slate-700'}>
+                                                                                            {subtask.title}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <span className="text-slate-500">{subtask.hoursSpent}h</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
                                         </div>

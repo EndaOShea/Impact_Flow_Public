@@ -3,10 +3,11 @@ import {
     X, Plus, Trash, Wand2, CheckCircle2, Circle, ChevronDown, ChevronRight,
     BarChart2, Upload, Paperclip, Download, ExternalLink,
     Calendar, Flag, Clock, Bell, Link as LinkIcon, MessageSquare,
-    Zap, Target, History, ArrowUpDown
+    Zap, Target, History, ArrowUpDown, Briefcase, Users, AlertCircle as AlertCircleIcon
 } from 'lucide-react';
-import { Task, Subtask, ImpactMetric, TaskStatus, ImpactType, WorkCategory, Attachment, Priority, Comment, AutomationRule, User } from '../types';
+import { Task, Subtask, ImpactMetric, TaskStatus, ImpactType, WorkCategory, Attachment, Priority, Comment, AutomationRule, User, Project, TaskBlocker } from '../types';
 import { TaskReport } from './TaskReport';
+import { api } from '../services/api';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface TaskModalProps {
   onSave: (task: Task) => void;
   taskToEdit?: Task;
   allTasks?: Task[];
+  projects?: Project[];
   currentUser: User;
 }
 
@@ -31,7 +33,7 @@ const toDateString = (date?: Date | string) => {
 };
 
 export const TaskModal: React.FC<TaskModalProps> = ({
-    isOpen, onClose, onSave, taskToEdit, allTasks = [], currentUser
+    isOpen, onClose, onSave, taskToEdit, allTasks = [], projects = [], currentUser
 }) => {
   const [activeTab, setActiveTab] = useState<ModalTab>('DETAILS');
 
@@ -40,6 +42,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
   const [priority, setPriority] = useState<Priority>(Priority.MEDIUM);
+  const [projectId, setProjectId] = useState<string>('');
+  const [blockers, setBlockers] = useState<TaskBlocker[]>([]);
 
   // Scheduling
   const [startDate, setStartDate] = useState<string>('');
@@ -117,6 +121,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setAfterScenario(taskToEdit.afterScenario || '');
         setImpactNarrative(taskToEdit.impactNarrative || '');
         setResourceLinks([...(taskToEdit.resourceLinks || [])]);
+        setProjectId(taskToEdit.projectId || '');
+        setBlockers([...(taskToEdit.blockers || [])]);
       } else {
         // Reset for new task
         setTitle('');
@@ -142,6 +148,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         setAfterScenario('');
         setImpactNarrative('');
         setResourceLinks([]);
+        setProjectId('');
+        setBlockers([]);
       }
     }
   }, [isOpen, taskToEdit]);
@@ -406,12 +414,48 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       }
     }
 
+    // Validate dates
+    if (startDate && dueDate) {
+      const start = new Date(startDate);
+      const due = new Date(dueDate);
+      if (due < start) {
+        alert('Due date cannot be before start date');
+        return;
+      }
+    }
+
+    // Validate task dates are within project dates
+    if (projectId) {
+      const selectedProject = projects.find(p => p.id === projectId);
+      if (selectedProject) {
+        if (startDate && selectedProject.startDate) {
+          const taskStart = new Date(startDate);
+          const projStart = new Date(selectedProject.startDate);
+          if (taskStart < projStart) {
+            alert(`Task start date cannot be before project start date (${projStart.toLocaleDateString()})`);
+            return;
+          }
+        }
+
+        if (dueDate && selectedProject.targetEndDate) {
+          const taskDue = new Date(dueDate);
+          const projEnd = new Date(selectedProject.targetEndDate);
+          if (taskDue > projEnd) {
+            alert(`Task due date cannot be after project end date (${projEnd.toLocaleDateString()})`);
+            return;
+          }
+        }
+      }
+    }
+
     const newTask: Task = {
       id: taskToEdit?.id || '',
       title,
       description,
       status,
       priority,
+      projectId: projectId || undefined,
+      projectTitle: projectId ? projects.find(p => p.id === projectId)?.title : undefined,
       startDate: startDate ? new Date(startDate) : undefined,
       dueDate: dueDate ? new Date(dueDate) : undefined,
       creatorId: taskToEdit?.creatorId || currentUser.id,
@@ -422,6 +466,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         weekDays: recurrenceFrequency === 'WEEKLY' ? recurrenceWeekDays : undefined
       } : undefined,
       dependencyIds,
+      blockers,
       createdAt: taskToEdit ? taskToEdit.createdAt : new Date(),
       completedAt: status === TaskStatus.COMPLETED && (!taskToEdit || taskToEdit.status !== TaskStatus.COMPLETED) ? new Date() : undefined,
       subtasks,
@@ -443,11 +488,57 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     onClose();
   };
 
+  // Get team members from selected project
+  const availableTeamMembers = useMemo(() => {
+    if (!projectId) return [];
+    const selectedProject = projects.find(p => p.id === projectId);
+    return selectedProject?.teamMembers || [];
+  }, [projectId, projects]);
+
+  // Blocker handlers
+  const handleAddBlocker = async (teamMemberId: string, reason: string) => {
+    if (!taskToEdit?.id || !teamMemberId) return;
+
+    try {
+      const newBlocker = await api.addTaskBlocker(taskToEdit.id, teamMemberId, reason);
+      setBlockers([...blockers, newBlocker]);
+    } catch (error) {
+      console.error('Failed to add blocker:', error);
+      alert('Failed to add blocker. Please try again.');
+    }
+  };
+
+  const handleRemoveBlocker = async (blockerId: string) => {
+    if (!taskToEdit?.id) return;
+
+    try {
+      await api.deleteTaskBlocker(taskToEdit.id, blockerId);
+      setBlockers(blockers.filter(b => b.id !== blockerId));
+    } catch (error) {
+      console.error('Failed to remove blocker:', error);
+      alert('Failed to remove blocker. Please try again.');
+    }
+  };
+
+  const handleResolveBlocker = async (blockerId: string) => {
+    if (!taskToEdit?.id) return;
+
+    try {
+      const updatedBlocker = await api.resolveTaskBlocker(taskToEdit.id, blockerId);
+      setBlockers(blockers.map(b => b.id === blockerId ? { ...b, resolvedAt: updatedBlocker.resolvedAt } : b));
+    } catch (error) {
+      console.error('Failed to resolve blocker:', error);
+      alert('Failed to resolve blocker. Please try again.');
+    }
+  };
+
   if (!isOpen) return null;
 
   const currentTaskState: Task = {
       id: taskToEdit?.id || 'temp',
       title, description, status, priority,
+      projectId: projectId || undefined,
+      projectTitle: projectId ? projects.find(p => p.id === projectId)?.title : undefined,
       startDate: startDate ? new Date(startDate) : undefined,
       dueDate: dueDate ? new Date(dueDate) : undefined,
       creatorId: currentUser.id,
@@ -458,6 +549,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         weekDays: recurrenceFrequency === 'WEEKLY' ? recurrenceWeekDays : undefined
       } : undefined,
       dependencyIds,
+      blockers,
       createdAt: new Date(),
       subtasks, impactMetrics, attachments, comments,
       automations,
@@ -521,6 +613,21 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-current opacity-50 pointer-events-none" />
                 </div>
 
+                {/* Project Dropdown */}
+                <div className="relative group">
+                    <select
+                        value={projectId}
+                        onChange={(e) => setProjectId(e.target.value)}
+                        className="text-sm font-semibold pl-3 pr-8 py-1.5 rounded-full border-none focus:ring-2 focus:ring-offset-1 outline-none appearance-none cursor-pointer bg-purple-50 text-purple-700 focus:ring-purple-500"
+                    >
+                        <option value="">No Project</option>
+                        {projects.map(p => (
+                            <option key={p.id} value={p.id}>{p.title}</option>
+                        ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-current opacity-50 pointer-events-none" />
+                </div>
+
                 <div className="h-6 w-px bg-slate-200"></div>
 
                 <div className="flex bg-slate-100 p-1 rounded-lg overflow-x-auto">
@@ -553,7 +660,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         </div>
 
         {/* Content Scroll Area */}
-        <div className="flex-1 overflow-y-auto bg-slate-50/50 min-h-[500px]">
+        <div className="overflow-y-auto bg-slate-50/50 h-[650px]">
 
           {/* TAB: REPORT */}
           {activeTab === 'REPORT' && (
@@ -678,6 +785,96 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         </button>
                     </div>
                  </div>
+
+                 {/* Blockers */}
+                 {projectId && taskToEdit && (
+                   <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                          <AlertCircleIcon className="w-4 h-4 text-red-500" /> Blockers
+                        </h3>
+                        {availableTeamMembers.length === 0 && (
+                          <p className="text-xs text-slate-400 italic">Add team members to the project first</p>
+                        )}
+                      </div>
+
+                      {blockers.length === 0 && (
+                        <p className="text-slate-400 text-sm italic mb-4">No blockers assigned.</p>
+                      )}
+
+                      <div className="space-y-3 mb-4">
+                        {blockers.map(blocker => (
+                          <div key={blocker.id} className={`p-3 rounded-lg border ${blocker.resolvedAt ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Users className="w-4 h-4 text-slate-600" />
+                                  <span className="font-semibold text-sm text-slate-800">{blocker.teamMemberName}</span>
+                                  {blocker.resolvedAt && (
+                                    <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full">Resolved</span>
+                                  )}
+                                </div>
+                                {blocker.reason && (
+                                  <p className="text-sm text-slate-600 ml-6">{blocker.reason}</p>
+                                )}
+                                <p className="text-xs text-slate-400 ml-6 mt-1">
+                                  Added {new Date(blocker.createdAt).toLocaleDateString()}
+                                  {blocker.resolvedAt && ` • Resolved ${new Date(blocker.resolvedAt).toLocaleDateString()}`}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                {!blocker.resolvedAt && (
+                                  <button
+                                    onClick={() => handleResolveBlocker(blocker.id)}
+                                    className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors"
+                                    title="Mark as resolved"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleRemoveBlocker(blocker.id)}
+                                  className="p-1.5 text-red-500 hover:bg-red-100 rounded transition-colors"
+                                  title="Remove blocker"
+                                >
+                                  <Trash className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {availableTeamMembers.length > 0 && (
+                        <div className="flex flex-col gap-2">
+                          <select
+                            id="blocker-select"
+                            className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            defaultValue=""
+                            onChange={(e) => {
+                              const memberId = e.target.value;
+                              if (memberId) {
+                                const reason = prompt('Reason for blocking (optional):');
+                                handleAddBlocker(memberId, reason || '');
+                                e.target.value = '';
+                              }
+                            }}
+                          >
+                            <option value="">+ Add Team Member as Blocker</option>
+                            {availableTeamMembers
+                              .filter(tm => !blockers.some(b => b.teamMemberId === tm.id && !b.resolvedAt))
+                              .map(tm => (
+                                <option key={tm.id} value={tm.id}>{tm.name} {tm.role && `(${tm.role})`}</option>
+                              ))
+                            }
+                          </select>
+                          <p className="text-xs text-slate-500 italic">
+                            Team members who are blocking this task from being completed
+                          </p>
+                        </div>
+                      )}
+                   </div>
+                 )}
 
                  {/* Notes */}
                  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -986,9 +1183,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
               {/* Right Column: Meta Data */}
               <div className="space-y-6">
-                <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
                     <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Planning</h3>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-3">
                         <div>
                             <label className="text-xs font-medium text-slate-600 mb-1 block">Start Date</label>
                             <input
@@ -1001,7 +1198,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                     }
                                 }}
                                 onClick={handleSafeShowPicker}
-                                className="w-full text-xs border border-slate-300 rounded bg-white px-3 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
                         <div>
@@ -1012,7 +1209,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                 onChange={(e) => setDueDate(e.target.value)}
                                 onClick={handleSafeShowPicker}
                                 min={startDate || undefined}
-                                className="w-full text-xs border border-slate-300 rounded bg-white px-3 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
                     </div>

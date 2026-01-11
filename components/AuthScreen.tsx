@@ -112,6 +112,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
     try {
         await api.resetPassword(recoveryKeyInput.trim(), password);
         setError('');
+        setPassword('');
+        setRecoveryKeyInput('');
         setMode('LOGIN');
         alert('Password reset successfully! Please log in with your new password.');
     } catch (err: any) {

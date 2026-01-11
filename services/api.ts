@@ -4,7 +4,7 @@
  * This client handles all HTTP requests to the PostgreSQL backend.
  */
 
-import { User, Task, SupportTicket, ReportSchedule } from '../types';
+import { User, Task, SupportTicket, ReportSchedule, Project, TeamMember } from '../types';
 
 // API Configuration
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:2001/api';
@@ -287,6 +287,173 @@ class ApiClient {
         await this.request(`/tasks/${taskId}/attachments/${attachmentId}`, {
             method: 'DELETE',
         });
+    }
+
+    /**
+     * Add blocker to task
+     */
+    async addTaskBlocker(taskId: string, teamMemberId: string, reason?: string): Promise<any> {
+        return await this.request(`/tasks/${taskId}/blockers`, {
+            method: 'POST',
+            body: JSON.stringify({ teamMemberId, reason }),
+        });
+    }
+
+    /**
+     * Remove blocker from task
+     */
+    async deleteTaskBlocker(taskId: string, blockerId: string): Promise<void> {
+        await this.request(`/tasks/${taskId}/blockers/${blockerId}`, {
+            method: 'DELETE',
+        });
+    }
+
+    /**
+     * Mark blocker as resolved
+     */
+    async resolveTaskBlocker(taskId: string, blockerId: string): Promise<any> {
+        return await this.request(`/tasks/${taskId}/blockers/${blockerId}/resolve`, {
+            method: 'PUT',
+        });
+    }
+
+    // ============================================================================
+    // PROJECTS
+    // ============================================================================
+
+    /**
+     * Get all projects
+     */
+    async getProjects(filters?: {
+        status?: string;
+        priority?: string;
+    }): Promise<Project[]> {
+        const queryParams = new URLSearchParams();
+        if (filters) {
+            Object.entries(filters).forEach(([key, value]) => {
+                if (value) queryParams.append(key, value);
+            });
+        }
+
+        const endpoint = `/projects${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        return await this.request<Project[]>(endpoint);
+    }
+
+    /**
+     * Get single project by ID
+     */
+    async getProject(projectId: string): Promise<Project> {
+        return await this.request<Project>(`/projects/${projectId}`);
+    }
+
+    /**
+     * Create a new project
+     */
+    async createProject(project: Partial<Project>): Promise<Project> {
+        return await this.request<Project>('/projects', {
+            method: 'POST',
+            body: JSON.stringify(project),
+        });
+    }
+
+    /**
+     * Update existing project
+     */
+    async updateProject(projectId: string, project: Partial<Project>): Promise<Project> {
+        return await this.request<Project>(`/projects/${projectId}`, {
+            method: 'PUT',
+            body: JSON.stringify(project),
+        });
+    }
+
+    /**
+     * Save project (create or update)
+     */
+    async saveProject(project: Partial<Project>): Promise<Project> {
+        if (project.id && project.createdAt) {
+            return await this.updateProject(project.id, project);
+        } else {
+            return await this.createProject(project);
+        }
+    }
+
+    /**
+     * Delete a project
+     */
+    async deleteProject(projectId: string): Promise<void> {
+        await this.request(`/projects/${projectId}`, { method: 'DELETE' });
+    }
+
+    /**
+     * Get team members for a project
+     */
+    async getTeamMembers(projectId: string): Promise<TeamMember[]> {
+        return await this.request<TeamMember[]>(`/projects/${projectId}/team-members`);
+    }
+
+    /**
+     * Add team member to project
+     */
+    async addTeamMember(projectId: string, member: Partial<TeamMember>): Promise<TeamMember> {
+        return await this.request<TeamMember>(`/projects/${projectId}/team-members`, {
+            method: 'POST',
+            body: JSON.stringify(member),
+        });
+    }
+
+    /**
+     * Update team member
+     */
+    async updateTeamMember(projectId: string, memberId: string, updates: Partial<TeamMember>): Promise<TeamMember> {
+        return await this.request<TeamMember>(`/projects/${projectId}/team-members/${memberId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updates),
+        });
+    }
+
+    /**
+     * Delete team member
+     */
+    async deleteTeamMember(projectId: string, memberId: string): Promise<void> {
+        await this.request(`/projects/${projectId}/team-members/${memberId}`, {
+            method: 'DELETE',
+        });
+    }
+
+    /**
+     * Add comment to project
+     */
+    async addProjectComment(projectId: string, text: string): Promise<any> {
+        return await this.request(`/projects/${projectId}/comments`, {
+            method: 'POST',
+            body: JSON.stringify({ text }),
+        });
+    }
+
+    /**
+     * Add attachment to project
+     */
+    async addProjectAttachment(projectId: string, attachment: { name: string; type: string; url: string; size: number }): Promise<any> {
+        return await this.request(`/projects/${projectId}/attachments`, {
+            method: 'POST',
+            body: JSON.stringify(attachment),
+        });
+    }
+
+    /**
+     * Delete project attachment
+     */
+    async deleteProjectAttachment(projectId: string, attachmentId: string): Promise<void> {
+        await this.request(`/projects/${projectId}/attachments/${attachmentId}`, {
+            method: 'DELETE',
+        });
+    }
+
+    /**
+     * Get project analytics
+     */
+    async getProjectAnalytics(projectId: string): Promise<any> {
+        return await this.request(`/projects/${projectId}/analytics`);
     }
 
     // ============================================================================
