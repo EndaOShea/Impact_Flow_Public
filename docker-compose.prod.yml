@@ -23,7 +23,7 @@ services:
     networks:
       - backend-network
 
-  # Backend API (Exposed to host for nginx reverse proxy)
+  # Backend API (Internal only - accessed via nginx)
   backend:
     build:
       context: ./backend
@@ -44,8 +44,7 @@ services:
       RATE_LIMIT_WINDOW_MINUTES: ${RATE_LIMIT_WINDOW_MINUTES:-15}
       RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
       LOG_LEVEL: ${LOG_LEVEL:-warn}
-    ports:
-      - "2001:2001"  # Exposed for host nginx
+    # No ports exposed - accessed via nginx only
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:2001/health || exit 1"]
       interval: 30s
@@ -55,7 +54,7 @@ services:
     networks:
       - backend-network
 
-  # Frontend (Exposed to host for nginx reverse proxy)
+  # Frontend (Internal only - accessed via nginx)
   frontend:
     build:
       context: .
@@ -67,10 +66,33 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    ports:
-      - "2080:2080"  # Exposed for host (frontend serves on port 2080 inside container)
+    # No ports exposed - accessed via nginx only
     networks:
       - backend-network
+
+  # NGINX Reverse Proxy (Only service exposed to host)
+  nginx:
+    image: nginx:alpine
+    container_name: impact-flow-nginx
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"      # HTTP
+      - "443:443"    # HTTPS (when SSL is configured)
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # Mount SSL certificates directory (optional - for HTTPS)
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+      # - ./ssl:/etc/letsencrypt:ro
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:
