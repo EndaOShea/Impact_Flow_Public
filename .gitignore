@@ -36,6 +36,7 @@ issues
 node_modules
 
 # Database files
+backend/database/*
 *.db
 *.sqlite
 *.sqlite3
