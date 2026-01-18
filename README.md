@@ -67,7 +67,6 @@ POSTGRES_DB=impactflow_db
 
 # Security (generate with: openssl rand -base64 48)
 SESSION_SECRET=your_session_secret_here
-API_KEY_ENCRYPTION_SECRET=your_encryption_secret_here
 
 # Application
 FRONTEND_URL=http://localhost:2080
@@ -166,7 +165,6 @@ Frontend runs on `http://localhost:3000`
 ### 🔐 Security & Authentication
 - **Session-Based Auth**: Secure HTTP-only cookies with 24-hour expiry
 - **Password Security**: Argon2id hashing with configurable parameters
-- **Encrypted API Keys**: AES-256-GCM encryption for user API keys
 - **Rate Limiting**: Protects against brute-force and DoS attacks
 - **File Upload Security**: Blocks executables, scripts, SVG (XSS), and ZIP files
 - **SQL Injection Protection**: Parameterized queries throughout
@@ -193,7 +191,6 @@ Frontend runs on `http://localhost:3000`
 - **Runtime**: Node.js with Express.js
 - **Database**: PostgreSQL 14+ with connection pooling
 - **Authentication**: Session-based with Argon2id password hashing
-- **Encryption**: AES-256-GCM for API key storage
 - **Session Storage**: SHA-256 hashed tokens with 24-hour expiry
 - **Security Middleware**: CORS, rate limiting, helmet
 
@@ -219,7 +216,7 @@ Impact_Flow_App/
 │   ├── src/
 │   │   ├── server.js              # Main Express application
 │   │   ├── routes/                # RESTful API endpoints
-│   │   │   ├── auth.routes.js     # Authentication & API keys
+│   │   │   ├── auth.routes.js     # Authentication
 │   │   │   ├── task.routes.js     # Task CRUD operations
 │   │   │   ├── project.routes.js  # Project management
 │   │   │   ├── analytics.routes.js # Analytics & metrics
@@ -228,7 +225,7 @@ Impact_Flow_App/
 │   │   │   ├── auth.middleware.js # Session validation
 │   │   │   └── security.middleware.js # Rate limiting, CORS
 │   │   ├── utils/
-│   │   │   ├── auth.js            # Password hashing, encryption
+│   │   │   ├── auth.js            # Password hashing, authentication
 │   │   │   └── fileValidation.js  # File upload security
 │   │   └── config/
 │   │       └── database.js        # PostgreSQL connection pool
@@ -254,7 +251,6 @@ Impact_Flow_App/
 ├── services/                       # API & External Services
 │   ├── api.ts                     # ApiClient singleton
 │   ├── analytics.ts               # Analytics service
-│   ├── apiKeyManager.ts           # API key management
 │   └── fileValidation.ts          # Client-side validation
 │
 ├── types.ts                        # TypeScript type definitions
@@ -340,19 +336,6 @@ const project = await api.saveProject({
 });
 ```
 
-### API Key Management
-
-```typescript
-// Store encrypted API key for external services
-await api.saveApiKey('service-name', 'your-api-key-here');
-
-// Retrieve API key
-const apiKey = await api.getApiKey('service-name');
-
-// Delete API key
-await api.deleteApiKey('service-name');
-```
-
 ## 🔐 Security Implementation
 
 This application implements comprehensive security measures following industry best practices:
@@ -379,7 +362,6 @@ This application implements comprehensive security measures following industry b
 - **Audit Logging**: All file operations logged for compliance
 
 ### Data Protection
-- **API Key Encryption**: AES-256-GCM encryption for stored API keys
 - **Environment Secrets**: Secure configuration via environment variables
 - **Audit Trails**: Comprehensive activity logging for all critical operations
 
@@ -391,7 +373,7 @@ The PostgreSQL database includes:
 - **Impact Tracking**: `impact_metrics`, `temporal_metrics`
 - **Collaboration**: `comments`, `attachments`, `resource_links`, `activity_log`
 - **Scheduling**: `report_schedules`, `recurring_tasks`
-- **Security**: `sessions`, `user_api_keys`
+- **Security**: `sessions`
 
 **Migrations**: Located in `backend/database/migrations/` for version control and schema updates.
 
@@ -508,9 +490,8 @@ Ensure these are set in your production environment:
 # Database
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 
-# Security (generate secure random strings)
+# Security (generate secure random string)
 SESSION_SECRET=<64-char-random-string>
-API_KEY_ENCRYPTION_SECRET=<64-char-random-string>
 
 # Application
 NODE_ENV=production
