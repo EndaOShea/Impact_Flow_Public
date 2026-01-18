@@ -3,7 +3,7 @@
 
 # Impact Flow Task Manager
 
-**A full-stack personal task management application with impact metrics tracking and AI-powered strategic planning**
+**A full-stack personal task management application with impact metrics tracking and strategic planning**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
@@ -17,13 +17,12 @@
 
 ## 📖 Overview
 
-Impact Flow is a production-ready task management system designed for personal productivity with a focus on measuring and visualizing task impact. Built with modern web technologies, it features a PostgreSQL backend, AI-powered diagram generation, and comprehensive security measures.
+Impact Flow is a production-ready task management system designed for personal productivity with a focus on measuring and visualizing task impact. Built with modern web technologies, it features a PostgreSQL backend, diagram visualization, and comprehensive security measures.
 
 ### 🎯 Project Highlights
 
 - **Full-Stack TypeScript**: End-to-end type safety from database to UI
 - **Production-Ready**: Docker containerization with Nginx reverse proxy
-- **AI Integration**: Google Gemini API for automated diagram generation
 - **Security-First**: Defense-in-depth approach with multiple security layers
 - **Database-Driven**: PostgreSQL with migrations and proper schema design
 - **Modern Architecture**: RESTful API, React 19, Vite, Tailwind CSS
@@ -47,7 +46,6 @@ Impact Flow is a production-ready task management system designed for personal p
 ### Prerequisites
 - Docker & Docker Compose (recommended)
 - OR Node.js 18+ and PostgreSQL 14+ for local development
-- Google Gemini API key (for AI diagram generation)
 
 ### Docker Deployment (Recommended)
 
@@ -157,11 +155,7 @@ Frontend runs on `http://localhost:3000`
 - **Data Visualization**: Interactive charts and graphs using Recharts
 - **Multiple Views**: Dashboard, List, Calendar (monthly), Timeline (Gantt-style), and Reports
 - **System Health Dashboard**: Monitor project progress and performance metrics
-
-### 🤖 AI Integration
-- **AI-Powered Diagrams**: Generate Mermaid flowcharts from natural language descriptions
-- **Strategic Planning**: Visualize task strategies and workflows automatically
-- **Google Gemini Integration**: Leverages gemini-2.5-flash model for diagram generation
+- **Mermaid Diagrams**: Visualize task strategies and workflows with flowcharts
 
 ### 📎 File Management
 - **Secure Attachments**: Upload up to 3 files per task (5MB max each)
@@ -202,10 +196,6 @@ Frontend runs on `http://localhost:3000`
 - **Encryption**: AES-256-GCM for API key storage
 - **Session Storage**: SHA-256 hashed tokens with 24-hour expiry
 - **Security Middleware**: CORS, rate limiting, helmet
-
-### AI & External Services
-- **AI Model**: Google Gemini API (gemini-2.5-flash)
-- **SDK**: @google/genai for natural language to diagram conversion
 
 ### DevOps & Infrastructure
 - **Containerization**: Docker with multi-stage builds
@@ -259,7 +249,7 @@ Impact_Flow_App/
 │   ├── ImpactChart.tsx            # Impact visualization
 │   ├── AnalyticsDashboard.tsx     # Analytics & reports
 │   ├── SystemHealthDashboard.tsx  # System metrics
-│   └── MermaidDiagram.tsx         # AI-generated diagrams
+│   └── MermaidDiagram.tsx         # Mermaid flowchart diagrams
 │
 ├── services/                       # API & External Services
 │   ├── api.ts                     # ApiClient singleton
@@ -353,14 +343,14 @@ const project = await api.saveProject({
 ### API Key Management
 
 ```typescript
-// Store encrypted API key (e.g., for Gemini AI)
-await api.saveApiKey('gemini', 'your-api-key-here');
+// Store encrypted API key for external services
+await api.saveApiKey('service-name', 'your-api-key-here');
 
 // Retrieve API key
-const apiKey = await api.getApiKey('gemini');
+const apiKey = await api.getApiKey('service-name');
 
 // Delete API key
-await api.deleteApiKey('gemini');
+await api.deleteApiKey('service-name');
 ```
 
 ## 🔐 Security Implementation
@@ -442,7 +432,6 @@ Built as a full-stack development portfolio project demonstrating:
 - PostgreSQL database management
 - Docker containerization
 - Security best practices
-- AI integration (Google Gemini)
 - Production-ready deployment
 
 ## 🙏 Acknowledgments
@@ -451,7 +440,6 @@ Built as a full-stack development portfolio project demonstrating:
 - **Tailwind CSS** - For utility-first styling
 - **Recharts** - For beautiful chart components
 - **Mermaid.js** - For diagram rendering
-- **Google Gemini** - For AI-powered features
 - **PostgreSQL Community** - For the robust database
 
 ---
