@@ -408,21 +408,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👤 Author
 
-Built as a full-stack development portfolio project demonstrating:
-- Modern React and TypeScript development
-- RESTful API design with Express.js
-- PostgreSQL database management
-- Docker containerization
-- Security best practices
-- Production-ready deployment
-
-## 🙏 Acknowledgments
-
-- **React Team** - For the amazing framework
-- **Tailwind CSS** - For utility-first styling
-- **Recharts** - For beautiful chart components
-- **Mermaid.js** - For diagram rendering
-- **PostgreSQL Community** - For the robust database
+Enda O'Shea - [EndaOShea](https://github.com/EndaOShea)
 
 ---
 
