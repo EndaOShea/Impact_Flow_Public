@@ -5,6 +5,7 @@ import {
     PieChart, Pie, Cell
 } from 'recharts';
 import { TrendingUp, Activity, Clock, MousePointerClick, FileText, Calendar } from 'lucide-react';
+import { TemporalMetricsCharts } from './TemporalMetricsCharts';
 
 export const AnalyticsDashboard: React.FC = () => {
     const [loading, setLoading] = useState(true);
@@ -262,6 +263,24 @@ export const AnalyticsDashboard: React.FC = () => {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* Temporal Metrics Section */}
+            <div className="mt-8">
+                <div className="mb-6">
+                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                        <TrendingUp className="w-6 h-6 text-blue-600" />
+                        Performance Trends
+                    </h2>
+                    <p className="text-sm text-slate-500 mt-1">
+                        Track productivity metrics over time
+                    </p>
+                </div>
+
+                <TemporalMetricsCharts
+                    defaultGranularity="monthly"
+                    defaultMonths={12}
+                />
             </div>
         </div>
     );

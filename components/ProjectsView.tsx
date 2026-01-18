@@ -189,7 +189,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ projects, tasks, onP
                                                 <div className="flex items-center gap-1">
                                                     <TrendingUp className="w-3 h-3 text-green-600" />
                                                     <span className="text-green-600 font-semibold">
-                                                        ${project.aggregatedImpact.revenue.toLocaleString()}
+                                                        €{project.aggregatedImpact.revenue.toLocaleString()}
                                                     </span>
                                                 </div>
                                             )}

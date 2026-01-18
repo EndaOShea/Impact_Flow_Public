@@ -288,7 +288,8 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
             creatorId: projectToEdit?.creatorId || currentUser.id,
             startDate: startDate ? new Date(startDate) : undefined,
             targetEndDate: targetEndDate ? new Date(targetEndDate) : undefined,
-            actualEndDate: actualEndDate ? new Date(actualEndDate) : undefined,
+            actualEndDate: actualEndDate ? new Date(actualEndDate) :
+                          (status === ProjectStatus.COMPLETED && !projectToEdit?.actualEndDate ? new Date() : projectToEdit?.actualEndDate),
             createdAt: projectToEdit?.createdAt || new Date(),
             updatedAt: new Date(),
             completedAt: status === ProjectStatus.COMPLETED && projectToEdit?.status !== ProjectStatus.COMPLETED ? new Date() : projectToEdit?.completedAt,
@@ -950,9 +951,9 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                                                 {analytics.aggregatedImpact['Revenue'] && analytics.aggregatedImpact['Revenue'].target > 0 && (
                                                     <div className="p-3 bg-green-50 rounded-lg">
                                                         <div className="text-xs text-green-600 mb-1">Revenue</div>
-                                                        <div className="text-lg font-bold text-green-700">${analytics.aggregatedImpact['Revenue'].target.toLocaleString()}</div>
+                                                        <div className="text-lg font-bold text-green-700">€{analytics.aggregatedImpact['Revenue'].target.toLocaleString()}</div>
                                                         {analytics.aggregatedImpact['Revenue'].achieved > 0 && (
-                                                            <div className="text-xs text-green-600">Achieved: ${analytics.aggregatedImpact['Revenue'].achieved.toLocaleString()}</div>
+                                                            <div className="text-xs text-green-600">Achieved: €{analytics.aggregatedImpact['Revenue'].achieved.toLocaleString()}</div>
                                                         )}
                                                     </div>
                                                 )}

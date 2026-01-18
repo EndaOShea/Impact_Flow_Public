@@ -844,7 +844,7 @@ export const App: React.FC = () => {
                                         <td className="p-4">
                                             {revenue ? (
                                                 <span className="text-green-600 font-bold text-xs bg-green-50 px-2 py-1 rounded">
-                                                    +${(revenue.achievedValue || 0).toLocaleString()}
+                                                    +€{(revenue.achievedValue || 0).toLocaleString()}
                                                 </span>
                                             ) : '-'}
                                         </td>

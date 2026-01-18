@@ -33,7 +33,7 @@ type FilterOption =
     | 'RISK_MITIGATION';
 
 export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
-  const [filter, setFilter] = useState<FilterOption>('REVENUE_USD');
+  const [filter, setFilter] = useState<FilterOption>('REVENUE_EUR');
 
   // Helper to determine what we are looking for
   const filterConfig = useMemo(() => {
@@ -45,7 +45,7 @@ export const ImpactChart: React.FC<ImpactChartProps> = ({ tasks }) => {
           case 'SATISFACTION': return { type: ImpactType.SATISFACTION, label: 'CSAT Score', color: '#f59e0b' };
           case 'COST_REDUCTION': return { type: ImpactType.COST_REDUCTION, label: 'Cost Reduction', color: '#6366f1' };
           case 'RISK_MITIGATION': return { type: ImpactType.RISK_MITIGATION, label: 'Risk Mitigation', color: '#ef4444' };
-          default: return { type: ImpactType.REVENUE, currency: 'USD', label: 'Revenue', color: '#3b82f6' };
+          default: return { type: ImpactType.REVENUE, currency: 'EUR', label: 'Revenue', color: '#3b82f6' };
       }
   }, [filter]);
 

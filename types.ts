@@ -273,3 +273,22 @@ export interface ReportSchedule {
 }
 
 export type ViewState = 'DASHBOARD' | 'TASKS' | 'PROJECTS' | 'CALENDAR' | 'TIMELINE' | 'SETTINGS' | 'NOTIFICATIONS' | 'REPORTS' | 'ANALYTICS';
+
+// Temporal Analytics Types
+export interface TemporalMetrics {
+  date: string;
+  workload: number;
+  completionVelocity: number;
+  avgTimeToCompletion: number;
+  failedDeadlines: number;
+}
+
+export interface TemporalMetricsResponse {
+  metrics: TemporalMetrics[];
+  summary: {
+    totalCompleted: number;
+    totalFailed: number;
+    avgWorkload: number;
+    avgCompletionTime: number;
+  };
+}

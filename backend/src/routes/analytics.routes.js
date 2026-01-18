@@ -151,6 +151,247 @@ router.get('/system/metrics', requireAuth, async (req, res) => {
 });
 
 // ============================================================================
+// GET TEMPORAL METRICS (Workload, velocity, time to completion, failed deadlines)
+// ============================================================================
+
+router.get('/temporal-metrics', requireAuth, async (req, res) => {
+    try {
+        const { granularity = 'monthly', months = 12 } = req.query;
+
+        // Validate granularity
+        const validGranularities = ['daily', 'weekly', 'monthly'];
+        if (!validGranularities.includes(granularity)) {
+            return res.status(400).json({ error: 'Invalid granularity. Must be daily, weekly, or monthly' });
+        }
+
+        // Calculate date range
+        const monthsBack = parseInt(months) || 12;
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setMonth(startDate.getMonth() - monthsBack);
+
+        // Determine date format and interval for generate_series
+        let dateFormat, seriesInterval, dateTrunc;
+        if (granularity === 'daily') {
+            dateFormat = 'YYYY-MM-DD';
+            seriesInterval = '1 day';
+            dateTrunc = 'day';
+        } else if (granularity === 'weekly') {
+            dateFormat = 'YYYY-"W"IW';
+            seriesInterval = '1 week';
+            dateTrunc = 'week';
+        } else {
+            dateFormat = 'Mon YYYY';
+            seriesInterval = '1 month';
+            dateTrunc = 'month';
+        }
+
+        // Query 1: Workload Over Time (tasks in progress during each period)
+        const workloadQuery = `
+            WITH date_series AS (
+                SELECT generate_series(
+                    DATE_TRUNC($3, $1::timestamp),
+                    DATE_TRUNC($3, $2::timestamp),
+                    $4::interval
+                ) AS period_start
+            ),
+            workload_data AS (
+                SELECT
+                    ds.period_start,
+                    COUNT(DISTINCT t.id) AS workload
+                FROM date_series ds
+                LEFT JOIN tasks t ON
+                    t.creator_id = $5
+                    AND t.start_date IS NOT NULL
+                    AND t.start_date <= ds.period_start
+                    AND (
+                        t.completed_at IS NULL OR
+                        DATE_TRUNC($3, t.completed_at) > ds.period_start
+                    )
+                    AND t.status IN ('IN_PROGRESS', 'REVIEW')
+                GROUP BY ds.period_start
+            )
+            SELECT
+                TO_CHAR(period_start, $6) AS date,
+                COALESCE(workload, 0) AS workload
+            FROM workload_data
+            ORDER BY period_start;
+        `;
+
+        // Query 2: Completion Velocity (tasks completed per period)
+        const velocityQuery = `
+            WITH date_series AS (
+                SELECT generate_series(
+                    DATE_TRUNC($3, $1::timestamp),
+                    DATE_TRUNC($3, $2::timestamp),
+                    $4::interval
+                ) AS period_start
+            ),
+            completed_data AS (
+                SELECT
+                    DATE_TRUNC($3, t.completed_at) AS period_start,
+                    COUNT(*) AS completion_count
+                FROM tasks t
+                WHERE t.creator_id = $5
+                  AND t.status = 'COMPLETED'
+                  AND t.completed_at IS NOT NULL
+                  AND t.completed_at >= $1
+                  AND t.completed_at <= $2
+                GROUP BY DATE_TRUNC($3, t.completed_at)
+            )
+            SELECT
+                TO_CHAR(ds.period_start, $6) AS date,
+                COALESCE(cd.completion_count, 0) AS completion_velocity
+            FROM date_series ds
+            LEFT JOIN completed_data cd ON ds.period_start = cd.period_start
+            ORDER BY ds.period_start;
+        `;
+
+        // Query 3: Time to Completion (average hours from start to completion)
+        const timeToCompletionQuery = `
+            WITH date_series AS (
+                SELECT generate_series(
+                    DATE_TRUNC($3, $1::timestamp),
+                    DATE_TRUNC($3, $2::timestamp),
+                    $4::interval
+                ) AS period_start
+            ),
+            task_durations AS (
+                SELECT
+                    DATE_TRUNC($3, t.completed_at) AS period_start,
+                    t.id,
+                    COALESCE(
+                        (SELECT SUM(s.hours_spent)
+                         FROM subtasks s
+                         WHERE s.task_id = t.id),
+                        0
+                    ) AS total_hours
+                FROM tasks t
+                WHERE t.creator_id = $5
+                  AND t.status = 'COMPLETED'
+                  AND t.completed_at IS NOT NULL
+                  AND t.start_date IS NOT NULL
+                  AND t.completed_at >= $1
+                  AND t.completed_at <= $2
+            ),
+            avg_durations AS (
+                SELECT
+                    period_start,
+                    AVG(total_hours) AS avg_hours,
+                    COUNT(*) AS task_count
+                FROM task_durations
+                WHERE total_hours > 0
+                GROUP BY period_start
+            )
+            SELECT
+                TO_CHAR(ds.period_start, $6) AS date,
+                COALESCE(ROUND(ad.avg_hours::numeric, 1), 0) AS avg_time_to_completion
+            FROM date_series ds
+            LEFT JOIN avg_durations ad ON ds.period_start = ad.period_start
+            ORDER BY ds.period_start;
+        `;
+
+        // Query 4: Failed/Missed Deadlines (tasks that became overdue or failed)
+        const failedDeadlinesQuery = `
+            WITH date_series AS (
+                SELECT generate_series(
+                    DATE_TRUNC($3, $1::timestamp),
+                    DATE_TRUNC($3, $2::timestamp),
+                    $4::interval
+                ) AS period_start
+            ),
+            failed_data AS (
+                SELECT
+                    DATE_TRUNC($3, al.timestamp) AS period_start,
+                    COUNT(DISTINCT al.task_id) AS failed_count
+                FROM activity_log al
+                JOIN tasks t ON al.task_id = t.id
+                WHERE t.creator_id = $5
+                  AND (
+                      al.action LIKE '%OVERDUE%' OR
+                      al.action LIKE '%FAILED%'
+                  )
+                  AND al.timestamp >= $1
+                  AND al.timestamp <= $2
+                GROUP BY DATE_TRUNC($3, al.timestamp)
+            )
+            SELECT
+                TO_CHAR(ds.period_start, $6) AS date,
+                COALESCE(fd.failed_count, 0) AS failed_deadlines
+            FROM date_series ds
+            LEFT JOIN failed_data fd ON ds.period_start = fd.period_start
+            ORDER BY ds.period_start;
+        `;
+
+        // Execute all queries in parallel
+        const [workloadResult, velocityResult, timeToCompletionResult, failedDeadlinesResult] = await Promise.all([
+            query(workloadQuery, [startDate, endDate, dateTrunc, seriesInterval, req.user.id, dateFormat]),
+            query(velocityQuery, [startDate, endDate, dateTrunc, seriesInterval, req.user.id, dateFormat]),
+            query(timeToCompletionQuery, [startDate, endDate, dateTrunc, seriesInterval, req.user.id, dateFormat]),
+            query(failedDeadlinesQuery, [startDate, endDate, dateTrunc, seriesInterval, req.user.id, dateFormat])
+        ]);
+
+        // Combine results by date
+        const metricsMap = new Map();
+
+        // Initialize with all dates from workload query
+        workloadResult.rows.forEach(row => {
+            metricsMap.set(row.date, {
+                date: row.date,
+                workload: parseInt(row.workload) || 0,
+                completionVelocity: 0,
+                avgTimeToCompletion: 0,
+                failedDeadlines: 0
+            });
+        });
+
+        // Merge velocity data
+        velocityResult.rows.forEach(row => {
+            const existing = metricsMap.get(row.date);
+            if (existing) {
+                existing.completionVelocity = parseInt(row.completion_velocity) || 0;
+            }
+        });
+
+        // Merge time to completion data
+        timeToCompletionResult.rows.forEach(row => {
+            const existing = metricsMap.get(row.date);
+            if (existing) {
+                existing.avgTimeToCompletion = parseFloat(row.avg_time_to_completion) || 0;
+            }
+        });
+
+        // Merge failed deadlines data
+        failedDeadlinesResult.rows.forEach(row => {
+            const existing = metricsMap.get(row.date);
+            if (existing) {
+                existing.failedDeadlines = parseInt(row.failed_deadlines) || 0;
+            }
+        });
+
+        // Convert map to array
+        const metrics = Array.from(metricsMap.values());
+
+        // Calculate summary statistics
+        const summary = {
+            totalCompleted: metrics.reduce((sum, m) => sum + m.completionVelocity, 0),
+            totalFailed: metrics.reduce((sum, m) => sum + m.failedDeadlines, 0),
+            avgWorkload: metrics.length > 0
+                ? parseFloat((metrics.reduce((sum, m) => sum + m.workload, 0) / metrics.length).toFixed(1))
+                : 0,
+            avgCompletionTime: metrics.length > 0
+                ? parseFloat((metrics.reduce((sum, m) => sum + m.avgTimeToCompletion, 0) / metrics.filter(m => m.avgTimeToCompletion > 0).length || 0).toFixed(1))
+                : 0
+        };
+
+        res.json({ metrics, summary });
+    } catch (error) {
+        console.error('Get temporal metrics error:', error);
+        res.status(500).json({ error: 'Failed to get temporal metrics' });
+    }
+});
+
+// ============================================================================
 // UPDATE DAILY SUMMARY (Background job helper)
 // ============================================================================
 

@@ -103,6 +103,24 @@ export class AnalyticsService {
     }
 
     /**
+     * Get temporal metrics (workload, velocity, time to completion, failed deadlines)
+     */
+    static async getTemporalMetrics(
+        granularity: 'daily' | 'weekly' | 'monthly' = 'monthly',
+        months: number = 12
+    ) {
+        try {
+            const response = await api.get(
+                `/analytics/temporal-metrics?granularity=${granularity}&months=${months}`
+            );
+            return response;
+        } catch (error) {
+            console.error('Get temporal metrics error:', error);
+            return null;
+        }
+    }
+
+    /**
      * Get session duration in minutes
      */
     static getSessionDuration(): number {

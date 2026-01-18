@@ -197,7 +197,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       id: crypto.randomUUID(),
       type: ImpactType.REVENUE,
       value: 0,
-      currency: 'USD',
+      currency: 'EUR',
       description: ''
     };
     setImpactMetrics([...impactMetrics, newMetric]);
@@ -952,8 +952,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         <label className="text-[10px] font-bold text-emerald-600 uppercase mb-1 block">Achieved</label>
                                         <input
                                             type="number"
-                                            value={metric.achievedValue || 0}
-                                            onChange={(e) => handleUpdateMetric(metric.id, { achievedValue: parseFloat(e.target.value) || 0 })}
+                                            value={metric.achievedValue ?? ''}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                handleUpdateMetric(metric.id, {
+                                                    achievedValue: value === '' ? undefined : parseFloat(value)
+                                                });
+                                            }}
                                             className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 bg-emerald-50 outline-none focus:border-emerald-500 font-semibold"
                                             placeholder="0"
                                         />
@@ -1371,8 +1376,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       <input
                         type="number"
                         step="0.01"
-                        value={metric.achievedValue || 0}
-                        onChange={(e) => handleUpdateMetric(metric.id, { achievedValue: parseFloat(e.target.value) || 0 })}
+                        value={metric.achievedValue ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          handleUpdateMetric(metric.id, {
+                            achievedValue: value === '' ? undefined : parseFloat(value)
+                          });
+                        }}
                         className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-lg font-semibold"
                         placeholder="0"
                         autoFocus={impactMetrics[0].id === metric.id}

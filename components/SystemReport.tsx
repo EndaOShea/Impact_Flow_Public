@@ -10,6 +10,7 @@ import {
     PieChart, Pie, Cell
 } from 'recharts';
 import { api } from '../services/api';
+import { TemporalMetricsCharts } from './TemporalMetricsCharts';
 
 interface SystemReportProps {
   tasks: Task[];
@@ -19,7 +20,7 @@ interface SystemReportProps {
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
 
 export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) => {
-  const [activeTab, setActiveTab] = useState<'GENERATE' | 'SCHEDULE'>('GENERATE');
+  const [activeTab, setActiveTab] = useState<'GENERATE' | 'SCHEDULE' | 'TRENDS'>('GENERATE');
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<string>>(new Set());
 
   const [startDate, setStartDate] = useState<string>('');
@@ -180,14 +181,18 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
     const endObj = new Date(endDate); endObj.setHours(23,59,59,999);
 
     // Filter completed projects in period
-    const completedProjects = projects.filter(p =>
-      p.status === ProjectStatus.COMPLETED &&
-      p.actualEndDate &&
-      new Date(p.actualEndDate) >= startObj &&
-      new Date(p.actualEndDate) <= endObj
-    );
+    const completedProjects = projects.filter(p => {
+      if (p.status !== ProjectStatus.COMPLETED) return false;
 
-    // Only show standalone tasks (tasks without projectId) in the "Completed Tasks Breakdown" section
+      // Use actualEndDate if available, otherwise use completedAt
+      const completionDate = p.actualEndDate || p.completedAt;
+      if (!completionDate) return false;
+
+      const date = new Date(completionDate);
+      return date >= startObj && date <= endObj;
+    });
+
+    // Show only standalone completed tasks (exclude project tasks - they appear under their projects)
     const completedInPeriod = tasks.filter(t =>
       t.status === TaskStatus.COMPLETED &&
       t.completedAt &&
@@ -201,8 +206,15 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
 
     let totalRevenue = 0; let totalTimeSaved = 0; let totalHoursLogged = 0;
 
-    // Calculate metrics from standalone tasks
-    completedInPeriod.forEach(t => {
+    // Calculate metrics from ALL completed tasks (standalone + project tasks)
+    const allCompletedTasks = tasks.filter(t =>
+      t.status === TaskStatus.COMPLETED &&
+      t.completedAt &&
+      new Date(t.completedAt) >= startObj &&
+      new Date(t.completedAt) <= endObj
+    );
+
+    allCompletedTasks.forEach(t => {
         totalHoursLogged += t.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
         t.impactMetrics.forEach(m => {
             if(m.type === ImpactType.REVENUE) totalRevenue += (m.achievedValue || 0);
@@ -290,6 +302,12 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
             >
                 <ClockIcon className="w-4 h-4"/> Automation & Schedules
             </button>
+            <button
+                onClick={() => setActiveTab('TRENDS')}
+                className={`pb-4 px-2 text-sm font-bold flex items-center gap-2 ${activeTab === 'TRENDS' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+                <TrendingUp className="w-4 h-4"/> Trends
+            </button>
         </div>
 
         {activeTab === 'GENERATE' && (
@@ -337,7 +355,7 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
                         </div>
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                             <div className="flex items-center gap-2 mb-2 text-slate-500"><DollarSign className="w-5 h-5 text-emerald-500" /><span className="text-sm font-bold uppercase">Revenue Impact</span></div>
-                            <div className="flex items-end gap-2"><span className="text-3xl font-bold text-slate-800">${reportData.metrics.revenue.toLocaleString()}</span></div>
+                            <div className="flex items-end gap-2"><span className="text-3xl font-bold text-slate-800">€{reportData.metrics.revenue.toLocaleString()}</span></div>
                         </div>
                         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
                             <div className="flex items-center gap-2 mb-2 text-slate-500"><Clock className="w-5 h-5 text-blue-500" /><span className="text-sm font-bold uppercase">Hours Logged</span></div>
@@ -639,7 +657,7 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
                                                             <div className="bg-white p-3 rounded-lg border border-emerald-200">
                                                                 <p className="text-xs text-slate-500 mb-1">Revenue</p>
                                                                 <p className="text-lg font-bold text-green-600">
-                                                                    ${project.aggregatedImpact.revenue.toLocaleString()}
+                                                                    €{project.aggregatedImpact.revenue.toLocaleString()}
                                                                 </p>
                                                             </div>
                                                         )}
@@ -693,7 +711,7 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
 
                                             {/* Expanded Task List */}
                                             {isExpanded && projectTasks.length > 0 && (
-                                                <div className="mt-4 border-t border-purple-200 pt-4 space-y-3">
+                                                <div className="mt-4 border-t border-purple-200 pt-4 space-y-4">
                                                     {projectTasks.map((task) => {
                                                         const taskHours = task.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
                                                         const completedSubtasks = task.subtasks.filter(s => s.completed).length;
@@ -702,28 +720,30 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
                                                             : 100;
 
                                                         return (
-                                                            <div key={task.id} className="bg-white border border-purple-100 rounded-lg p-4 print:break-inside-avoid">
-                                                                <div className="flex items-start justify-between mb-2">
+                                                            <div key={task.id} className="bg-white border border-purple-100 rounded-lg p-5 print:break-inside-avoid">
+                                                                {/* Task Header */}
+                                                                <div className="flex items-start justify-between mb-3">
                                                                     <div className="flex-1">
-                                                                        <h5 className="font-bold text-slate-800 mb-1">{task.title}</h5>
+                                                                        <h5 className="text-base font-bold text-slate-800 mb-1">{task.title}</h5>
                                                                         {task.description && (
-                                                                            <p className="text-xs text-slate-600 mb-2">{task.description}</p>
+                                                                            <p className="text-sm text-slate-600 mb-2">{task.description}</p>
                                                                         )}
                                                                         <div className="flex items-center gap-3 text-xs text-slate-500">
+                                                                            <span className="flex items-center gap-1">
+                                                                                <Calendar className="w-3 h-3" />
+                                                                                Completed: {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : 'N/A'}
+                                                                            </span>
                                                                             <span className="flex items-center gap-1">
                                                                                 <Clock className="w-3 h-3" />
                                                                                 {taskHours.toFixed(1)}h logged
                                                                             </span>
-                                                                            <span className={`px-2 py-0.5 rounded-full font-bold ${
-                                                                                task.status === TaskStatus.COMPLETED ? 'bg-green-100 text-green-700' :
-                                                                                task.status === TaskStatus.IN_PROGRESS ? 'bg-blue-100 text-blue-700' :
-                                                                                'bg-slate-100 text-slate-600'
-                                                                            }`}>
-                                                                                {task.status.replace('_', ' ')}
+                                                                            <span className="flex items-center gap-1">
+                                                                                <CheckCircle2 className="w-3 h-3" />
+                                                                                {taskProgress}% complete
                                                                             </span>
                                                                         </div>
                                                                     </div>
-                                                                    <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
                                                                         task.priority === 'CRITICAL' ? 'bg-red-100 text-red-700' :
                                                                         task.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
                                                                         task.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
@@ -733,15 +753,72 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
                                                                     </span>
                                                                 </div>
 
-                                                                {/* Task Subtasks */}
-                                                                {task.subtasks.length > 0 && (
-                                                                    <div className="mt-3 bg-slate-50 rounded-lg p-3 border border-slate-100">
-                                                                        <div className="flex items-center justify-between mb-2">
-                                                                            <p className="text-xs font-bold text-slate-600">
-                                                                                Subtasks ({completedSubtasks}/{task.subtasks.length})
-                                                                            </p>
-                                                                            <p className="text-xs font-bold text-purple-600">{taskProgress}%</p>
+                                                                {/* KPIs Section */}
+                                                                {task.impactMetrics.length > 0 && (
+                                                                    <div className="mb-3 bg-gradient-to-r from-emerald-50 to-blue-50 p-3 rounded-lg border border-emerald-100">
+                                                                        <h6 className="text-xs font-bold text-slate-700 uppercase mb-2 flex items-center gap-2">
+                                                                            <TrendingUp className="w-3 h-3 text-emerald-600" />
+                                                                            Key Performance Indicators
+                                                                        </h6>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                                            {task.impactMetrics.map(metric => {
+                                                                                const target = metric.value;
+                                                                                const achieved = metric.achievedValue || 0;
+                                                                                const percent = target > 0 ? Math.min(100, Math.round((achieved / target) * 100)) : 0;
+                                                                                const currencySymbol = metric.type === ImpactType.REVENUE
+                                                                                    ? (metric.currency === 'EUR' ? '€' : metric.currency === 'GBP' ? '£' : '$')
+                                                                                    : '';
+
+                                                                                return (
+                                                                                    <div key={metric.id} className="bg-white p-2 rounded border border-slate-200">
+                                                                                        <div className="flex justify-between items-start mb-1">
+                                                                                            <div>
+                                                                                                <p className="text-xs font-bold text-slate-600">{metric.type}</p>
+                                                                                                {metric.description && (
+                                                                                                    <p className="text-[10px] text-slate-400">{metric.description}</p>
+                                                                                                )}
+                                                                                            </div>
+                                                                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                                                                                                percent >= 100 ? 'bg-green-100 text-green-700' :
+                                                                                                percent >= 80 ? 'bg-blue-100 text-blue-700' :
+                                                                                                percent >= 50 ? 'bg-amber-100 text-amber-700' :
+                                                                                                'bg-red-100 text-red-700'
+                                                                                            }`}>
+                                                                                                {percent}%
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <div className="flex items-baseline gap-1 mb-1">
+                                                                                            <span className="text-sm font-bold text-slate-800">
+                                                                                                {currencySymbol}{achieved.toLocaleString()}
+                                                                                            </span>
+                                                                                            <span className="text-[10px] text-slate-400">
+                                                                                                / {currencySymbol}{target.toLocaleString()}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <div className="w-full bg-slate-100 rounded-full h-1">
+                                                                                            <div
+                                                                                                className={`h-1 rounded-full ${
+                                                                                                    percent >= 100 ? 'bg-green-500' :
+                                                                                                    percent >= 80 ? 'bg-blue-500' :
+                                                                                                    percent >= 50 ? 'bg-amber-500' :
+                                                                                                    'bg-red-500'
+                                                                                                }`}
+                                                                                                style={{ width: `${Math.min(100, percent)}%` }}
+                                                                                            />
+                                                                                        </div>
+                                                                                    </div>
+                                                                                );
+                                                                            })}
                                                                         </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Subtasks Breakdown */}
+                                                                {task.subtasks.length > 0 && (
+                                                                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                                                                        <h6 className="text-xs font-bold text-slate-700 uppercase mb-2">
+                                                                            Work Breakdown ({task.subtasks.length} steps)
+                                                                        </h6>
                                                                         <div className="space-y-1.5">
                                                                             {task.subtasks.map(subtask => (
                                                                                 <div key={subtask.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-slate-100">
@@ -751,14 +828,50 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
                                                                                         ) : (
                                                                                             <div className="w-3 h-3 rounded-full border-2 border-slate-300 flex-shrink-0" />
                                                                                         )}
-                                                                                        <span className={subtask.completed ? 'text-slate-500 line-through' : 'text-slate-700'}>
+                                                                                        <span className={subtask.completed ? 'text-slate-500 line-through' : 'text-slate-700 font-medium'}>
                                                                                             {subtask.title}
                                                                                         </span>
+                                                                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
+                                                                                            {subtask.category}
+                                                                                        </span>
                                                                                     </div>
-                                                                                    <span className="text-slate-500">{subtask.hoursSpent}h</span>
+                                                                                    <div className="flex items-center gap-2 text-slate-500">
+                                                                                        <span>{subtask.hoursSpent}h logged</span>
+                                                                                        {subtask.estimatedHours > 0 && (
+                                                                                            <span className="text-[10px]">({subtask.estimatedHours}h est.)</span>
+                                                                                        )}
+                                                                                    </div>
                                                                                 </div>
                                                                             ))}
                                                                         </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Strategic Context */}
+                                                                {(task.beforeScenario || task.afterScenario || task.impactNarrative) && (
+                                                                    <div className="mt-3 pt-3 border-t border-slate-200 space-y-2">
+                                                                        {task.impactNarrative && (
+                                                                            <div>
+                                                                                <h6 className="text-xs font-bold text-slate-700 uppercase mb-1">Impact Summary</h6>
+                                                                                <p className="text-sm text-slate-600 italic">"{task.impactNarrative}"</p>
+                                                                            </div>
+                                                                        )}
+                                                                        {(task.beforeScenario || task.afterScenario) && (
+                                                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                                                {task.beforeScenario && (
+                                                                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                                                                                        <p className="font-bold text-slate-500 mb-1">Before</p>
+                                                                                        <p className="text-slate-600">{task.beforeScenario}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                                {task.afterScenario && (
+                                                                                    <div className="bg-emerald-50 p-2 rounded border border-emerald-100">
+                                                                                        <p className="font-bold text-emerald-700 mb-1">After</p>
+                                                                                        <p className="text-slate-600">{task.afterScenario}</p>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -990,6 +1103,15 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
                         </div>
                     )}
                 </div>
+            </div>
+        )}
+
+        {activeTab === 'TRENDS' && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <TemporalMetricsCharts
+                    defaultGranularity="monthly"
+                    defaultMonths={12}
+                />
             </div>
         )}
     </div>
