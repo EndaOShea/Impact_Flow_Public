@@ -34,3 +34,18 @@ older_docs
 issues
 
 node_modules
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+database.db
+# SSL certificates and private keys
+*.key
+*.crt
+*.pem
+database/ssl/*.key
+database/ssl/*.crt
+# User uploads
+uploads/
+user-content/
