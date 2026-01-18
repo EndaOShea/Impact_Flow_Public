@@ -1,34 +1,96 @@
 <div align="center">
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
 # Impact Flow Task Manager
 
-A powerful multi-tenant task management application with **PostgreSQL backend**, advanced impact tracking, team collaboration, and AI-powered strategic planning.
+**A full-stack personal task management application with impact metrics tracking and AI-powered strategic planning**
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14-316192.svg)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+</div>
+
+---
+
+## 📖 Overview
+
+Impact Flow is a production-ready task management system designed for personal productivity with a focus on measuring and visualizing task impact. Built with modern web technologies, it features a PostgreSQL backend, AI-powered diagram generation, and comprehensive security measures.
+
+### 🎯 Project Highlights
+
+- **Full-Stack TypeScript**: End-to-end type safety from database to UI
+- **Production-Ready**: Docker containerization with Nginx reverse proxy
+- **AI Integration**: Google Gemini API for automated diagram generation
+- **Security-First**: Defense-in-depth approach with multiple security layers
+- **Database-Driven**: PostgreSQL with migrations and proper schema design
+- **Modern Architecture**: RESTful API, React 19, Vite, Tailwind CSS
+- **Real-World Features**: Recurring tasks, impact tracking, analytics, file uploads
+
+## 📋 Table of Contents
+
+- [Quick Start](#-quick-start)
+- [Key Features](#-key-features)
+- [Tech Stack](#%EF%B8%8F-tech-stack)
+- [Project Architecture](#-project-architecture)
+- [API Usage Examples](#-api-usage-examples)
+- [Security Implementation](#-security-implementation)
+- [Database Schema](#%EF%B8%8F-database-schema)
+- [Deployment](#-deployment)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ## 🚀 Quick Start
 
-### Docker (Recommended - Production Ready)
+### Prerequisites
+- Docker & Docker Compose (recommended)
+- OR Node.js 18+ and PostgreSQL 14+ for local development
+- Google Gemini API key (for AI diagram generation)
 
+### Docker Deployment (Recommended)
+
+**1. Clone and configure:**
 ```bash
-# 1. Create .env file
+git clone <repository-url>
+cd Impact_Flow_App
+
+# Create environment file
 cp .env.example .env
-# Edit .env with your secrets (see .env.example)
-
-# 2. Start all services (PostgreSQL, Backend, Frontend)
-docker-compose -f docker-compose.prod.yml up -d
-
-# 3. Check logs
-docker-compose -f docker-compose.prod.yml logs -f
-
-# Access the application
-# Frontend: http://localhost:2080
-# Backend API: http://localhost:2001
 ```
 
-**Default credentials:**
-- Username: `user`
-- Password: `Password123!`
+**2. Edit `.env` file with your configuration:**
+```env
+# Database
+POSTGRES_USER=impactflow
+POSTGRES_PASSWORD=your_secure_password
+POSTGRES_DB=impactflow_db
+
+# Security (generate with: openssl rand -base64 48)
+SESSION_SECRET=your_session_secret_here
+API_KEY_ENCRYPTION_SECRET=your_encryption_secret_here
+
+# Application
+FRONTEND_URL=http://localhost:2080
+VITE_API_URL=http://localhost:2001
+NODE_ENV=production
+```
+
+**3. Start all services:**
+```bash
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+**4. Access the application:**
+- **Frontend**: http://localhost:2080
+- **Backend API**: http://localhost:2001
+
+**5. Login with test account:**
+- **Username**: `user`
+- **Password**: `Password123!`
+
+> 💡 **Note**: Change the default password immediately in a production environment. This is a demo account for testing purposes.
 
 ### Local Development (Without Docker)
 
@@ -80,80 +142,139 @@ Frontend runs on `http://localhost:3000`
 
 </details>
 
-**See [FRESH_START_GUIDE.md](FRESH_START_GUIDE.md) for complete setup guide with examples**
 
-## Features
+## ✨ Key Features
 
-- **PostgreSQL Backend**: Production-ready API with secure authentication
-- **Single-User Mode**: Personal task management with impact tracking
-- **Impact Tracking**: Measure and visualize revenue, efficiency gains, customer satisfaction, and more
-- **AI-Powered Strategy**: Generate Mermaid flowcharts from natural language using Gemini AI
-- **Advanced Task Management**:
-  - Recurring tasks with flexible schedules (daily, weekly, monthly, yearly)
-  - Task dependencies
-  - Subtasks with time tracking and work categorization
-  - Inline actual hours validation (no popups)
-  - Activity logging and audit trails
-- **Secure File Attachments** (Max 3 per task, 5MB each):
-  - Whitelist-based validation (PDF, Word, Excel, PowerPoint, Images, Text, CSV)
-  - Client + server-side security validation
-  - Download functionality with sanitized filenames
-  - Blocks executables, scripts, SVG, and ZIP files
-- **Resource Links**: Clickable external links with security (opens in new tab)
-- **Multiple Views**: Dashboard, List, Calendar, Timeline, and Reports
-- **Docker Deployment**: Production-ready containerized setup
+### 🎯 Task Management
+- **Advanced Task Organization**: Create tasks with subtasks, dependencies, and priority levels
+- **Recurring Tasks**: Flexible scheduling (daily, weekly, monthly, yearly) with automatic instance creation
+- **Time Tracking**: Log estimated and actual hours with work category classification
+- **Auto-Overdue Detection**: Automatic status updates for past-due tasks
+- **Activity Logging**: Complete audit trail of all task changes
 
-## Tech Stack
+### 📊 Impact Tracking & Analytics
+- **Impact Metrics**: Track revenue, efficiency gains, customer satisfaction, and custom metrics
+- **Data Visualization**: Interactive charts and graphs using Recharts
+- **Multiple Views**: Dashboard, List, Calendar (monthly), Timeline (Gantt-style), and Reports
+- **System Health Dashboard**: Monitor project progress and performance metrics
 
-- **Backend**: PostgreSQL 14+, Express.js, Argon2id authentication
-- **Frontend**: React 19, TypeScript, Vite
-- **UI**: Tailwind CSS, Lucide React icons
-- **Charts**: Recharts
-- **AI**: Google Gemini API (gemini-2.5-flash)
-- **Deployment**: Docker, Docker Compose
-- **Security**:
-  - Argon2 password hashing, SHA-256 session tokens
-  - File upload validation (whitelist-based, MIME + extension checking)
-  - Filename sanitization, path traversal prevention
-  - CORS, rate limiting, audit logging
+### 🤖 AI Integration
+- **AI-Powered Diagrams**: Generate Mermaid flowcharts from natural language descriptions
+- **Strategic Planning**: Visualize task strategies and workflows automatically
+- **Google Gemini Integration**: Leverages gemini-2.5-flash model for diagram generation
 
-## Default Test Account
+### 📎 File Management
+- **Secure Attachments**: Upload up to 3 files per task (5MB max each)
+- **File Type Validation**: Whitelist-based security (PDF, Word, Excel, PowerPoint, Images, Text, CSV)
+- **Defense-in-Depth**: Client-side + server-side validation prevents malicious uploads
+- **Resource Links**: Add external URLs with automatic security measures
 
-Login credentials (password: `Password123!`):
+### 🔐 Security & Authentication
+- **Session-Based Auth**: Secure HTTP-only cookies with 24-hour expiry
+- **Password Security**: Argon2id hashing with configurable parameters
+- **Encrypted API Keys**: AES-256-GCM encryption for user API keys
+- **Rate Limiting**: Protects against brute-force and DoS attacks
+- **File Upload Security**: Blocks executables, scripts, SVG (XSS), and ZIP files
+- **SQL Injection Protection**: Parameterized queries throughout
 
-- **user** - Single-user account
+### 🐳 Production-Ready Deployment
+- **Docker Containerization**: Multi-container orchestration with Docker Compose
+- **Nginx Reverse Proxy**: Production-grade request routing
+- **PostgreSQL Backend**: Robust relational database with migrations
+- **Environment Configuration**: Secure secrets management
 
-## 📁 Project Structure
+## 🛠️ Tech Stack
+
+### Frontend
+- **Framework**: React 19 with TypeScript
+- **Build Tool**: Vite (fast HMR and optimized builds)
+- **Styling**: Tailwind CSS 3.4+ with PostCSS
+- **State Management**: React Hooks (useState, useMemo, useEffect)
+- **Charts**: Recharts for data visualization
+- **Diagrams**: Mermaid.js for flowchart rendering
+- **Icons**: Lucide React
+- **HTTP Client**: Custom ApiClient singleton with automatic session management
+
+### Backend
+- **Runtime**: Node.js with Express.js
+- **Database**: PostgreSQL 14+ with connection pooling
+- **Authentication**: Session-based with Argon2id password hashing
+- **Encryption**: AES-256-GCM for API key storage
+- **Session Storage**: SHA-256 hashed tokens with 24-hour expiry
+- **Security Middleware**: CORS, rate limiting, helmet
+
+### AI & External Services
+- **AI Model**: Google Gemini API (gemini-2.5-flash)
+- **SDK**: @google/genai for natural language to diagram conversion
+
+### DevOps & Infrastructure
+- **Containerization**: Docker with multi-stage builds
+- **Orchestration**: Docker Compose for multi-container setup
+- **Reverse Proxy**: Nginx for production routing
+- **Environment Management**: dotenv for configuration
+- **Database Migrations**: SQL migration scripts
+
+### Development Tools
+- **Version Control**: Git
+- **Package Manager**: npm
+- **Code Quality**: TypeScript strict mode
+- **API Design**: RESTful architecture
+
+
+## 📁 Project Architecture
 
 ```
 Impact_Flow_App/
-├── backend/                    # PostgreSQL + Express API
+├── backend/                        # Express.js API Server
 │   ├── src/
-│   │   ├── server.js          # Main server
-│   │   ├── routes/            # API endpoints
-│   │   │   ├── auth.routes.js # ✅ Complete
-│   │   │   ├── task.routes.js # ✅ Complete
-│   │   │   └── ...            # Other routes
-│   │   ├── middleware/        # Auth, security
-│   │   └── utils/             # Auth helpers
+│   │   ├── server.js              # Main Express application
+│   │   ├── routes/                # RESTful API endpoints
+│   │   │   ├── auth.routes.js     # Authentication & API keys
+│   │   │   ├── task.routes.js     # Task CRUD operations
+│   │   │   ├── project.routes.js  # Project management
+│   │   │   ├── analytics.routes.js # Analytics & metrics
+│   │   │   └── reportSchedule.routes.js
+│   │   ├── middleware/
+│   │   │   ├── auth.middleware.js # Session validation
+│   │   │   └── security.middleware.js # Rate limiting, CORS
+│   │   ├── utils/
+│   │   │   ├── auth.js            # Password hashing, encryption
+│   │   │   └── fileValidation.js  # File upload security
+│   │   └── config/
+│   │       └── database.js        # PostgreSQL connection pool
 │   ├── database/
-│   │   ├── schema.sql         # Database schema (20+ tables)
-│   │   └── seed.sql           # Test data
-│   └── README.md              # API documentation
+│   │   ├── schema.sql             # Database schema
+│   │   ├── seed.sql               # Sample data
+│   │   └── migrations/            # Database migrations
+│   ├── Dockerfile                 # Production container
+│   └── Dockerfile.dev             # Development container
 │
-├── services/
-│   ├── api.ts                 # ✅ API client (USE THIS)
-│   └── gemini.ts              # AI diagram generation
+├── components/                     # React Components
+│   ├── App.tsx                    # Main application orchestrator
+│   ├── AuthScreen.tsx             # Login/registration
+│   ├── TaskModal.tsx              # Task creation/editing
+│   ├── ProjectModal.tsx           # Project management
+│   ├── CalendarView.tsx           # Monthly calendar
+│   ├── TimelineView.tsx           # Gantt timeline
+│   ├── ImpactChart.tsx            # Impact visualization
+│   ├── AnalyticsDashboard.tsx     # Analytics & reports
+│   ├── SystemHealthDashboard.tsx  # System metrics
+│   └── MermaidDiagram.tsx         # AI-generated diagrams
 │
-├── components/                # React components
-│   ├── App.tsx
-│   ├── TaskModal.tsx
-│   └── ...
-├── types.ts                   # TypeScript types
-└── FRESH_START_GUIDE.md      # Complete usage guide
+├── services/                       # API & External Services
+│   ├── api.ts                     # ApiClient singleton
+│   ├── analytics.ts               # Analytics service
+│   ├── apiKeyManager.ts           # API key management
+│   └── fileValidation.ts          # Client-side validation
+│
+├── types.ts                        # TypeScript type definitions
+├── docker-compose.prod.yml         # Production orchestration
+├── docker-compose.dev.yml          # Development orchestration
+├── nginx.conf                      # Nginx reverse proxy config
+└── CLAUDE.md                       # Architecture documentation
 ```
 
-## 💻 Using the API Client
+## 💻 API Usage Examples
 
 ### Authentication
 
@@ -161,92 +282,255 @@ Impact_Flow_App/
 import { api } from './services/api';
 
 // Login
-const user = await api.authenticate('admin', 'Password123!');
+const user = await api.authenticate('username', 'password');
+// Returns: { id, name, username, avatarInitials }
 
 // Logout
 await api.logout();
 
-// Get current user
+// Get current session
 const user = await api.getCurrentUser();
+
+// Password recovery
+const recoveryKey = await api.requestPasswordReset('username');
+await api.resetPasswordWithKey('username', recoveryKey, 'newPassword');
 ```
 
-### Tasks
+### Task Management
 
 ```typescript
-// Get all tasks
+// Fetch all tasks
 const tasks = await api.getTasks();
 
-// Create task
+// Create a new task
 const task = await api.saveTask({
-    title: 'Build feature',
+    title: 'Implement user authentication',
+    description: 'Add JWT-based auth system',
     status: 'TODO',
     priority: 'HIGH',
-    assigneeIds: ['user-id']
+    dueDate: new Date('2026-02-01'),
+    estimatedHours: 8,
+    assigneeIds: ['user-123'],
+    impactMetrics: [
+        { type: 'REVENUE', value: 5000, description: 'Expected revenue impact' }
+    ]
 });
 
-// Update task
-await api.saveTask({ id: 'task-id', status: 'COMPLETED' });
+// Update task status
+await api.saveTask({
+    id: task.id,
+    status: 'IN_PROGRESS'
+});
+
+// Add subtask
+const updatedTask = await api.saveTask({
+    id: task.id,
+    subtasks: [
+        { title: 'Design database schema', isCompleted: false }
+    ]
+});
 
 // Delete task
-await api.deleteTask('task-id');
+await api.deleteTask(task.id);
 ```
 
-**See [FRESH_START_GUIDE.md](FRESH_START_GUIDE.md) for complete API examples**
+### Projects
 
-## 🔐 Security
+```typescript
+// Get all projects
+const projects = await api.getProjects();
 
-- ✅ Argon2id password hashing (256 iterations, 512KB memory)
-- ✅ SHA-256 session token hashing
-- ✅ HTTP-only secure cookies
-- ✅ Rate limiting (5 auth, 100 API requests per 15min)
-- ✅ CORS protection
-- ✅ SQL injection protection via parameterized queries
-- ✅ Comprehensive audit logging
-- ✅ **File Upload Security**:
-  - Whitelist-based file type validation (frontend + backend)
-  - MIME type + extension verification (defense in depth)
-  - Filename sanitization (prevents path traversal)
-  - Max 5MB per file, 3 files per task
-  - Blocks executables, scripts, SVG (XSS), ZIP files
-  - Server-side re-validation prevents bypass
-  - Audit logging for all file operations
+// Create project
+const project = await api.saveProject({
+    name: 'Q1 Product Launch',
+    description: 'New feature rollout',
+    startDate: new Date('2026-01-01'),
+    endDate: new Date('2026-03-31'),
+    color: '#3B82F6'
+});
+```
 
-## 📚 Documentation
+### API Key Management
 
-- **[FRESH_START_GUIDE.md](FRESH_START_GUIDE.md)** - Complete setup & API usage guide
-- **[backend/README.md](backend/README.md)** - Full API documentation
-- **[CLAUDE.md](CLAUDE.md)** - Project architecture & development guide
+```typescript
+// Store encrypted API key (e.g., for Gemini AI)
+await api.saveApiKey('gemini', 'your-api-key-here');
+
+// Retrieve API key
+const apiKey = await api.getApiKey('gemini');
+
+// Delete API key
+await api.deleteApiKey('gemini');
+```
+
+## 🔐 Security Implementation
+
+This application implements comprehensive security measures following industry best practices:
+
+### Authentication & Authorization
+- **Password Security**: Argon2id hashing with 256 iterations and 512KB memory cost
+- **Session Management**: SHA-256 hashed tokens with HTTP-only secure cookies
+- **Token Expiry**: 24-hour session timeout with automatic cleanup
+- **Recovery System**: Secure password reset with recovery keys (format: `RK-XXXX-XXXX-XXXX`)
+
+### API Security
+- **Rate Limiting**: 5 auth attempts, 100 API requests per 15 minutes
+- **CORS Protection**: Configurable allowed origins
+- **SQL Injection Prevention**: Parameterized queries throughout
+- **Input Validation**: Comprehensive request validation middleware
+
+### File Upload Security (Defense-in-Depth)
+- **Whitelist Validation**: Only approved file types (PDF, DOC, XLS, PPT, images, text, CSV)
+- **Dual Validation**: Client-side + server-side verification
+- **MIME Type Checking**: Validates both extension and content type
+- **Filename Sanitization**: Prevents directory traversal attacks
+- **Size Limits**: 5MB per file, 3 attachments per task
+- **Blocked Types**: Executables, scripts, SVG (XSS prevention), ZIP archives
+- **Audit Logging**: All file operations logged for compliance
+
+### Data Protection
+- **API Key Encryption**: AES-256-GCM encryption for stored API keys
+- **Environment Secrets**: Secure configuration via environment variables
+- **Audit Trails**: Comprehensive activity logging for all critical operations
+
+## 🗄️ Database Schema
+
+The PostgreSQL database includes:
+
+- **Core Tables**: `users`, `tasks`, `projects`, `subtasks`
+- **Impact Tracking**: `impact_metrics`, `temporal_metrics`
+- **Collaboration**: `comments`, `attachments`, `resource_links`, `activity_log`
+- **Scheduling**: `report_schedules`, `recurring_tasks`
+- **Security**: `sessions`, `user_api_keys`
+
+**Migrations**: Located in `backend/database/migrations/` for version control and schema updates.
+
+**Sample Data**: Run `backend/scripts/seed-db.js` to populate test data.
+
+## 🎨 UI/UX Features
+
+- **Responsive Design**: Mobile-friendly with adaptive layouts
+- **Dark Mode Support**: System preference detection (ready for implementation)
+- **Custom Animations**: Smooth transitions with Tailwind CSS animations
+- **Accessibility**: Semantic HTML and keyboard navigation support
+- **Custom Scrollbars**: Styled scrollbars for better aesthetics
+- **Loading States**: Skeleton screens and spinners for better UX
+
+## 📚 Additional Documentation
+
+- **[backend/README.md](backend/README.md)** - Complete API endpoint documentation
+- **[CLAUDE.md](CLAUDE.md)** - Detailed architecture and development guide
+- **[.env.example](.env.example)** - Environment configuration template
+
+## 🤝 Contributing
+
+This is a portfolio project, but suggestions and feedback are welcome! Feel free to:
+
+1. Open an issue for bugs or feature requests
+2. Fork the repository and submit pull requests
+3. Share your thoughts on improvements
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 👤 Author
+
+Built as a full-stack development portfolio project demonstrating:
+- Modern React and TypeScript development
+- RESTful API design with Express.js
+- PostgreSQL database management
+- Docker containerization
+- Security best practices
+- AI integration (Google Gemini)
+- Production-ready deployment
+
+## 🙏 Acknowledgments
+
+- **React Team** - For the amazing framework
+- **Tailwind CSS** - For utility-first styling
+- **Recharts** - For beautiful chart components
+- **Mermaid.js** - For diagram rendering
+- **Google Gemini** - For AI-powered features
+- **PostgreSQL Community** - For the robust database
+
+---
+
+<div align="center">
+
+**⭐ If you found this project helpful, please consider giving it a star!**
+
+</div>
 
 ## 🚀 Deployment
 
-### Docker Production (Recommended)
+### Docker Production
 
 ```bash
-# Production deployment
+# Start all services
 docker-compose -f docker-compose.prod.yml up -d
 
-# Rebuild after updates
+# Rebuild after code changes
 docker-compose -f docker-compose.prod.yml up -d --build
 
 # View logs
 docker-compose -f docker-compose.prod.yml logs -f
+
+# Stop all services
+docker-compose -f docker-compose.prod.yml down
+
+# Stop and remove volumes (fresh start)
+docker-compose -f docker-compose.prod.yml down -v
 ```
 
-**Ports:**
-- Frontend: `http://localhost:2080`
-- Backend API: `http://localhost:2001`
-- PostgreSQL: `5432` (internal only)
+**Service Ports:**
+- **Frontend**: `http://localhost:2080`
+- **Backend API**: `http://localhost:2001`
+- **PostgreSQL**: `5432` (internal only, not exposed)
 
-### Cloud Deployment
+### Development Mode
 
-See `backend/README.md` for deployment instructions.
+For local development with hot-reload:
 
-**Options:**
-- Backend: Railway, Render, Heroku
-- Database: Neon, Supabase, AWS RDS
-- Frontend: Vercel, Netlify
-- Container: Docker Hub, AWS ECR, Google Container Registry
+```bash
+# Start development environment
+docker-compose -f docker-compose.dev.yml up
 
-## 📝 License
+# Or run frontend/backend separately
+cd backend && npm run dev  # Backend on :2001
+npm run dev                # Frontend on :3000
+```
 
-MIT
+### Cloud Deployment Options
+
+The application can be deployed to various cloud platforms:
+
+| Component | Recommended Platforms |
+|-----------|----------------------|
+| **Backend API** | Railway, Render, Heroku, AWS ECS, Google Cloud Run |
+| **Database** | Neon, Supabase, AWS RDS, DigitalOcean Managed PostgreSQL |
+| **Frontend** | Vercel, Netlify, AWS S3 + CloudFront |
+| **Containers** | Docker Hub, AWS ECR, Google Container Registry, GitHub Packages |
+
+### Environment Variables for Production
+
+Ensure these are set in your production environment:
+
+```env
+# Database
+DATABASE_URL=postgresql://user:password@host:5432/dbname
+
+# Security (generate secure random strings)
+SESSION_SECRET=<64-char-random-string>
+API_KEY_ENCRYPTION_SECRET=<64-char-random-string>
+
+# Application
+NODE_ENV=production
+FRONTEND_URL=https://your-domain.com
+PORT=2001
+```
+
+Generate secure secrets:
+```bash
+openssl rand -base64 48
+```
