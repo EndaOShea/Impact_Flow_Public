@@ -1,6 +1,7 @@
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import cors from 'cors';
+import { query } from '../config/database.js';
 
 // CORS configuration
 export const corsMiddleware = cors({
@@ -79,6 +80,62 @@ export const requestLogger = (req, res, next) => {
             });
         }
     });
+
+    next();
+};
+
+// Visit tracking middleware (tracks API usage for analytics)
+export const trackVisits = async (req, res, next) => {
+    // Only track if user is authenticated
+    if (req.user && req.user.id) {
+        // Don't track health checks, static assets, or analytics tracking itself
+        if (
+            !req.path.includes('/health') &&
+            !req.path.includes('/analytics/track') &&
+            req.method !== 'OPTIONS'
+        ) {
+            // Track navigation/API call asynchronously (don't block request)
+            setImmediate(async () => {
+                try {
+                    let eventType = 'api_call';
+                    let eventCategory = 'navigation';
+
+                    // Categorize the event
+                    if (req.path.includes('/auth')) {
+                        eventCategory = 'auth';
+                        if (req.path.includes('/login')) eventType = 'login';
+                        else if (req.path.includes('/logout')) eventType = 'logout';
+                    } else if (req.path.includes('/tasks')) {
+                        eventCategory = 'task';
+                        if (req.method === 'POST') eventType = 'task_created';
+                        else if (req.method === 'PUT' || req.method === 'PATCH') eventType = 'task_updated';
+                        else if (req.method === 'DELETE') eventType = 'task_deleted';
+                        else eventType = 'task_viewed';
+                    } else if (req.path.includes('/projects')) {
+                        eventCategory = 'project';
+                        if (req.method === 'POST') eventType = 'project_created';
+                        else if (req.method === 'PUT' || req.method === 'PATCH') eventType = 'project_updated';
+                        else eventType = 'project_viewed';
+                    }
+
+                    await query(
+                        `INSERT INTO usage_analytics (user_id, event_type, event_category, ip_address, user_agent)
+                         VALUES ($1, $2, $3, $4, $5)`,
+                        [
+                            req.user.id,
+                            eventType,
+                            eventCategory,
+                            req.ip,
+                            req.get('user-agent')
+                        ]
+                    );
+                } catch (error) {
+                    // Silently fail - don't break the request
+                    console.error('Visit tracking error:', error);
+                }
+            });
+        }
+    }
 
     next();
 };

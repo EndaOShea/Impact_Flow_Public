@@ -151,6 +151,116 @@ router.get('/system/metrics', requireAuth, async (req, res) => {
 });
 
 // ============================================================================
+// GET SYSTEM HEALTH & STATS (Admin dashboard)
+// ============================================================================
+
+router.get('/system/health', requireAuth, async (req, res) => {
+    try {
+        const startTime = Date.now();
+
+        // Get database health
+        const dbHealth = await query('SELECT NOW() as db_time');
+        const dbResponseTime = Date.now() - startTime;
+
+        // Get total users
+        const usersResult = await query('SELECT COUNT(*) as total FROM users');
+        const totalUsers = parseInt(usersResult.rows[0].total);
+
+        // Get active sessions (logged in users)
+        const sessionsResult = await query(
+            'SELECT COUNT(*) as active FROM sessions WHERE expires_at > NOW()'
+        );
+        const activeSessions = parseInt(sessionsResult.rows[0].active);
+
+        // Get today's stats
+        const todayStats = await query(`
+            SELECT
+                COUNT(*) FILTER (WHERE event_category = 'navigation') as page_views,
+                COUNT(*) FILTER (WHERE event_type = 'login') as logins,
+                COUNT(DISTINCT user_id) as active_users
+            FROM usage_analytics
+            WHERE timestamp >= CURRENT_DATE
+        `);
+
+        // Get total analytics events (all-time visits)
+        const totalVisits = await query('SELECT COUNT(*) as total FROM usage_analytics');
+
+        // Get last 7 days activity
+        const weeklyActivity = await query(`
+            SELECT
+                DATE(timestamp) as date,
+                COUNT(*) as events,
+                COUNT(DISTINCT user_id) as unique_users
+            FROM usage_analytics
+            WHERE timestamp >= CURRENT_DATE - INTERVAL '7 days'
+            GROUP BY DATE(timestamp)
+            ORDER BY date DESC
+        `);
+
+        // Get top events in last 24 hours
+        const topEvents = await query(`
+            SELECT
+                event_type,
+                COUNT(*) as count
+            FROM usage_analytics
+            WHERE timestamp >= NOW() - INTERVAL '24 hours'
+            GROUP BY event_type
+            ORDER BY count DESC
+            LIMIT 10
+        `);
+
+        res.json({
+            health: {
+                status: 'healthy',
+                uptime: process.uptime(),
+                uptimeFormatted: formatUptime(process.uptime()),
+                dbResponseTime,
+                timestamp: new Date().toISOString()
+            },
+            users: {
+                total: totalUsers,
+                activeSessions: activeSessions,
+                activeToday: parseInt(todayStats.rows[0].active_users) || 0
+            },
+            activity: {
+                pageViewsToday: parseInt(todayStats.rows[0].page_views) || 0,
+                loginsToday: parseInt(todayStats.rows[0].logins) || 0,
+                totalVisitsAllTime: parseInt(totalVisits.rows[0].total) || 0,
+                weeklyActivity: weeklyActivity.rows,
+                topEvents: topEvents.rows
+            },
+            memory: {
+                used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+                total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+                unit: 'MB'
+            }
+        });
+    } catch (error) {
+        console.error('System health check error:', error);
+        res.status(500).json({
+            health: {
+                status: 'unhealthy',
+                error: error.message
+            }
+        });
+    }
+});
+
+// Helper function to format uptime
+function formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+
+    return parts.join(' ') || '< 1m';
+}
+
+// ============================================================================
 // GET TEMPORAL METRICS (Workload, velocity, time to completion, failed deadlines)
 // ============================================================================
 

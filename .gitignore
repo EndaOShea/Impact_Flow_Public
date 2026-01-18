@@ -28,8 +28,9 @@ dist-ssr
 *.sln
 *.sw?
 
-docs/*
+docs
+older_docs
 
-issues/*
+issues
 
 node_modules

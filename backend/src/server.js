@@ -10,6 +10,7 @@ import {
     helmetMiddleware,
     generalRateLimiter,
     requestLogger,
+    trackVisits,
     sanitizeInput,
     errorHandler,
     notFoundHandler
@@ -42,6 +43,7 @@ app.use(compression());
 
 app.use(sanitizeInput);
 app.use(requestLogger);
+app.use(trackVisits);
 
 app.use('/api/', generalRateLimiter);
 
