@@ -5,16 +5,16 @@ services:
     container_name: impact-flow-postgres-dev
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-impactflow_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password}
-      POSTGRES_DB: ${POSTGRES_DB:-impactflow_db}
+      POSTGRES_USER: impactflow_user
+      POSTGRES_PASSWORD: dev_password
+      POSTGRES_DB: impactflow_db
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
       - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-impactflow_user} -d ${POSTGRES_DB:-impactflow_db}"]
+      test: ["CMD-SHELL", "pg_isready -U impactflow_user -d impactflow_db"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,15 +31,15 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: development
-      PORT: ${PORT:-2001}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-impactflow_user}:${POSTGRES_PASSWORD:-dev_password}@postgres:5432/${POSTGRES_DB:-impactflow_db}
-      SESSION_SECRET: ${SESSION_SECRET:-dev-secret-key-not-for-production}
-      API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:-dev-encryption-secret-not-for-production}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:2080}
-      SESSION_DURATION_HOURS: ${SESSION_DURATION_HOURS:-24}
-      SESSION_CLEANUP_INTERVAL_MINUTES: ${SESSION_CLEANUP_INTERVAL_MINUTES:-60}
-      RATE_LIMIT_WINDOW_MINUTES: ${RATE_LIMIT_WINDOW_MINUTES:-15}
-      RATE_LIMIT_MAX_REQUESTS: ${RATE_LIMIT_MAX_REQUESTS:-100}
+      PORT: 2001
+      DATABASE_URL: postgresql://impactflow_user:dev_password@postgres:5432/impactflow_db
+      SESSION_SECRET: dev-secret-key-not-for-production
+      API_KEY_ENCRYPTION_SECRET: dev-encryption-secret-not-for-production
+      FRONTEND_URL: http://localhost:2080
+      SESSION_DURATION_HOURS: 24
+      SESSION_CLEANUP_INTERVAL_MINUTES: 60
+      RATE_LIMIT_WINDOW_MINUTES: 15
+      RATE_LIMIT_MAX_REQUESTS: 100
     volumes:
       # Mount source for hot-reload
       - ./backend/src:/app/src
@@ -67,7 +67,7 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: development
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:2001/api}
+      VITE_API_URL: http://localhost:2001/api
     volumes:
       # Mount source code for hot reloading
       - ./components:/app/components

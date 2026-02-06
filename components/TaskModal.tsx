@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-    X, Plus, Trash, Wand2, CheckCircle2, Circle, ChevronDown, ChevronRight,
+    X, Plus, Trash, Wand2, CheckCircle2, Circle, ChevronDown, ChevronUp, ChevronRight,
     BarChart2, Upload, Paperclip, Download, ExternalLink,
     Calendar, Flag, Clock, Bell, Link as LinkIcon, MessageSquare,
     Zap, Target, History, ArrowUpDown, Briefcase, Users, AlertCircle as AlertCircleIcon
@@ -190,6 +190,22 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   const handleDeleteSubtask = (id: string) => {
     setSubtasks(subtasks.filter(s => s.id !== id));
+  };
+
+  const handleMoveSubtaskUp = (id: string) => {
+    const index = subtasks.findIndex(s => s.id === id);
+    if (index <= 0) return;
+    const updated = [...subtasks];
+    [updated[index - 1], updated[index]] = [updated[index], updated[index - 1]];
+    setSubtasks(updated);
+  };
+
+  const handleMoveSubtaskDown = (id: string) => {
+    const index = subtasks.findIndex(s => s.id === id);
+    if (index === -1 || index >= subtasks.length - 1) return;
+    const updated = [...subtasks];
+    [updated[index], updated[index + 1]] = [updated[index + 1], updated[index]];
+    setSubtasks(updated);
   };
 
   const handleAddMetric = () => {
@@ -1081,7 +1097,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         </button>
                     </div>
                     <div className="space-y-3">
-                        {subtasks.map(subtask => (
+                        {subtasks.map((subtask, index) => (
                             <div key={subtask.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm transition-all hover:border-blue-300 group">
                                 <div className="flex items-center gap-3 p-3 bg-slate-50/50 hover:bg-white transition-colors">
                                     <button onClick={() => toggleSubtaskExpand(subtask.id)} className="text-slate-400 hover:text-slate-600">
@@ -1103,6 +1119,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                     >
                                         <Flag className={`w-4 h-4 ${subtask.isMilestone ? 'fill-purple-600 text-purple-600' : 'text-slate-300 hover:text-purple-400'}`} />
                                     </button>
+                                    <button onClick={() => handleMoveSubtaskUp(subtask.id)} disabled={index === 0} className={`p-1 opacity-0 group-hover:opacity-100 ${index === 0 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-300 hover:text-blue-500'}`} title="Move up"><ChevronUp className="w-4 h-4" /></button>
+                                    <button onClick={() => handleMoveSubtaskDown(subtask.id)} disabled={index === subtasks.length - 1} className={`p-1 opacity-0 group-hover:opacity-100 ${index === subtasks.length - 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-300 hover:text-blue-500'}`} title="Move down"><ChevronDown className="w-4 h-4" /></button>
                                     <button onClick={() => handleDeleteSubtask(subtask.id)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100"><Trash className="w-4 h-4" /></button>
                                 </div>
                                 {expandedSubtaskId === subtask.id && (
