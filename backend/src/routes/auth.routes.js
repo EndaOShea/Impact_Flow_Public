@@ -178,15 +178,9 @@ router.post('/login', authRateLimiter, async (req, res) => {
 
         await logAudit(user.id, 'LOGIN_SUCCESS', 'user', user.id, null, req.ip, req.get('user-agent'));
 
-        const cookieOptions = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            maxAge: 24 * 60 * 60 * 1000
-        };
-
-        res.cookie('session', sessionToken, cookieOptions);
-
+        // Bearer-only auth: the token is returned in the body and stored/sent by
+        // the SPA as an Authorization header. We intentionally do NOT set a session
+        // cookie — no ambient credential means no CSRF surface on state-changing routes.
         res.json({
             user: {
                 id: user.id,
@@ -208,7 +202,7 @@ router.post('/login', authRateLimiter, async (req, res) => {
 
 router.post('/logout', requireAuth, async (req, res) => {
     try {
-        const token = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const token = req.headers.authorization?.replace('Bearer ', '');
 
         if (token) {
             await destroySession(token);
@@ -412,7 +406,7 @@ router.delete('/account', requireAuth, async (req, res) => {
 // Get all active sessions for current user
 router.get('/sessions', requireAuth, async (req, res) => {
     try {
-        const currentToken = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const currentToken = req.headers.authorization?.replace('Bearer ', '');
         const currentTokenHash = currentToken ? hashToken(currentToken) : null;
 
         const result = await query(
@@ -445,7 +439,7 @@ router.get('/sessions', requireAuth, async (req, res) => {
 router.delete('/sessions/:sessionId', requireAuth, async (req, res) => {
     try {
         const { sessionId } = req.params;
-        const currentToken = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const currentToken = req.headers.authorization?.replace('Bearer ', '');
         const currentTokenHash = currentToken ? hashToken(currentToken) : null;
 
         // Check if session exists and belongs to user
@@ -479,7 +473,7 @@ router.delete('/sessions/:sessionId', requireAuth, async (req, res) => {
 // Revoke all sessions except current
 router.delete('/sessions', requireAuth, async (req, res) => {
     try {
-        const currentToken = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const currentToken = req.headers.authorization?.replace('Bearer ', '');
         const currentTokenHash = currentToken ? hashToken(currentToken) : null;
 
         const result = await query(

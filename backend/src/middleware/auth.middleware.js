@@ -3,7 +3,7 @@ import { validateSession } from '../utils/auth.js';
 // Middleware to require authentication
 export const requireAuth = async (req, res, next) => {
     try {
-        const token = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const token = req.headers.authorization?.replace('Bearer ', '');
 
         if (!token) {
             return res.status(401).json({ error: 'Authentication required' });
@@ -26,7 +26,7 @@ export const requireAuth = async (req, res, next) => {
 // Optional auth - continues even if no token
 export const optionalAuth = async (req, res, next) => {
     try {
-        const token = req.cookies?.session || req.headers.authorization?.replace('Bearer ', '');
+        const token = req.headers.authorization?.replace('Bearer ', '');
 
         if (token) {
             const user = await validateSession(token);

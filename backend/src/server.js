@@ -28,6 +28,12 @@ import { pool } from './config/database.js';
 const app = express();
 const PORT = process.env.PORT || 2001;
 
+// Behind nginx (host edge + in-stack reverse proxy): trust the first proxy hop
+// so req.ip reflects the real client. Rate limiters key on req.ip — without this
+// they collapse to the proxy address (one global bucket) and brute-force
+// protection is defeated.
+app.set('trust proxy', 1);
+
 // ============================================================================
 // MIDDLEWARE SETUP
 // ============================================================================

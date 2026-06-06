@@ -404,7 +404,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
                                 <div className="subpanel" style={{ marginTop: 16 }}>
                                     <div className="ph">CALENDAR COLOR</div>
-                                    <div className="swatches">
+                                    <div className="swatches" style={{ gridTemplateColumns: 'repeat(5, 44px)', justifyContent: 'start' }}>
                                         {[
                                             { name: 'Purple', value: '#8b5cf6' },
                                             { name: 'Blue', value: '#3b82f6' },
