@@ -1,23 +1,24 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Task, ImpactType, TaskStatus, ReportSchedule, Project, ProjectStatus } from '../types';
 import {
-    Calendar, Printer, TrendingUp, Clock, CheckCircle2,
-    DollarSign, BarChart2, PieChart as PieChartIcon, ArrowUpRight, ArrowDownRight,
-    PlayCircle, Mail, Plus, Trash, Clock as ClockIcon, CalendarDays, Repeat, Info, HelpCircle, Check, Briefcase, ChevronDown, ChevronRight
+  Calendar, Printer, TrendingUp, Clock, CheckCircle2, DollarSign, BarChart2,
+  PieChart as PieChartIcon, Plus, Trash, Clock as ClockIcon, Info, Briefcase, ChevronDown, ChevronRight,
 } from 'lucide-react';
-import {
-    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-    PieChart, Pie, Cell
-} from 'recharts';
+import { BarChart, Donut } from './charts/Charts';
 import { api } from '../services/api';
 import { TemporalMetricsCharts } from './TemporalMetricsCharts';
+import { priorityClass } from '../lib/display';
 
 interface SystemReportProps {
   tasks: Task[];
   projects: Project[];
 }
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#64748b'];
+const COLORS = ['#6366f1', '#0d9488', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#94a3b8'];
+const STATUS_COLOR: Record<string, string> = {
+  'COMPLETED': '#0d9488', 'IN PROGRESS': '#6366f1', 'REVIEW': '#8b5cf6',
+  'OVERDUE': '#ef4444', 'FAILED': '#ef4444', 'TODO': '#94a3b8', 'POSTPONED': '#f59e0b',
+};
 
 export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) => {
   const [activeTab, setActiveTab] = useState<'GENERATE' | 'SCHEDULE' | 'TRENDS'>('GENERATE');
@@ -32,13 +33,10 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
   const [schedName, setSchedName] = useState('');
   const [schedFreq, setSchedFreq] = useState<'DAILY' | 'WEEKLY' | 'MONTHLY' | 'CUSTOM'>('WEEKLY');
   const [schedTime, setSchedTime] = useState('09:00');
-
   const [dailyScope, setDailyScope] = useState<'TODAY' | 'YESTERDAY'>('YESTERDAY');
-
   const [monthlyRunDay, setMonthlyRunDay] = useState<number>(1);
   const [monthlyScope, setMonthlyScope] = useState<'CALENDAR_MONTH' | 'ROLLING_DAYS'>('CALENDAR_MONTH');
   const [monthlyRollingDays, setMonthlyRollingDays] = useState<number>(30);
-
   const [schedCustomInterval, setSchedCustomInterval] = useState(2);
   const [schedWeekDays, setSchedWeekDays] = useState<number[]>([]);
   const [schedRangeEnd, setSchedRangeEnd] = useState<number>(0);
@@ -49,1071 +47,488 @@ export const SystemReport: React.FC<SystemReportProps> = ({ tasks, projects }) =
     start.setDate(1);
     setStartDate(start.toISOString().split('T')[0]);
     setEndDate(new Date().toISOString().split('T')[0]);
-
     loadSchedules();
   }, []);
 
   const loadSchedules = async () => {
-      try {
-          const items = await api.getReportSchedules();
-          setSchedules(items);
-      } catch (err) {
-          console.error('Failed to load report schedules:', err);
-      }
+    try { setSchedules(await api.getReportSchedules()); }
+    catch (err) { console.error('Failed to load report schedules:', err); }
   };
 
   const handleCreateSchedule = async () => {
-      if(!schedName) return;
-
-      let startOffset = schedRangeStart;
-      let endOffset = schedRangeEnd;
-
-      if (schedFreq === 'DAILY') {
-          if (dailyScope === 'TODAY') { startOffset = 0; endOffset = 0; }
-          else { startOffset = 1; endOffset = 1; }
-      }
-      else if (schedFreq === 'WEEKLY') {
-          startOffset = 7;
-          endOffset = 1;
-      }
-      else if (schedFreq === 'MONTHLY') {
-          startOffset = 30; endOffset = 0;
-          if (monthlyScope === 'ROLLING_DAYS') {
-              startOffset = monthlyRollingDays;
-              endOffset = 0;
-          }
-      }
-
-      const newSchedule: ReportSchedule = {
-          id: crypto.randomUUID(),
-          name: schedName,
-          frequency: schedFreq,
-          time: schedTime,
-
-          dailyScope: schedFreq === 'DAILY' ? dailyScope : undefined,
-          monthlyRunDay: schedFreq === 'MONTHLY' ? monthlyRunDay : undefined,
-          monthlyScope: schedFreq === 'MONTHLY' ? monthlyScope : undefined,
-          monthlyRollingValue: schedFreq === 'MONTHLY' && monthlyScope === 'ROLLING_DAYS' ? monthlyRollingDays : undefined,
-
-          customInterval: schedFreq === 'CUSTOM' ? schedCustomInterval : undefined,
-          weekDays: schedFreq === 'WEEKLY' ? schedWeekDays : undefined,
-
-          rangeStartOffset: startOffset,
-          rangeEndOffset: endOffset,
-
-          recipients: [],
-          active: true
-      };
-
-      try {
-          await api.createReportSchedule(newSchedule);
-          setIsCreatingSchedule(false);
-
-          setSchedName('');
-          setSchedFreq('WEEKLY');
-          setSchedWeekDays([]);
-          setDailyScope('YESTERDAY');
-
-          loadSchedules();
-      } catch (err) {
-          console.error('Failed to create report schedule:', err);
-      }
+    if (!schedName) return;
+    let startOffset = schedRangeStart;
+    let endOffset = schedRangeEnd;
+    if (schedFreq === 'DAILY') {
+      if (dailyScope === 'TODAY') { startOffset = 0; endOffset = 0; } else { startOffset = 1; endOffset = 1; }
+    } else if (schedFreq === 'WEEKLY') { startOffset = 7; endOffset = 1; }
+    else if (schedFreq === 'MONTHLY') {
+      startOffset = 30; endOffset = 0;
+      if (monthlyScope === 'ROLLING_DAYS') { startOffset = monthlyRollingDays; endOffset = 0; }
+    }
+    const newSchedule: ReportSchedule = {
+      id: crypto.randomUUID(),
+      name: schedName,
+      frequency: schedFreq,
+      time: schedTime,
+      dailyScope: schedFreq === 'DAILY' ? dailyScope : undefined,
+      monthlyRunDay: schedFreq === 'MONTHLY' ? monthlyRunDay : undefined,
+      monthlyScope: schedFreq === 'MONTHLY' ? monthlyScope : undefined,
+      monthlyRollingValue: schedFreq === 'MONTHLY' && monthlyScope === 'ROLLING_DAYS' ? monthlyRollingDays : undefined,
+      customInterval: schedFreq === 'CUSTOM' ? schedCustomInterval : undefined,
+      weekDays: schedFreq === 'WEEKLY' ? schedWeekDays : undefined,
+      rangeStartOffset: startOffset,
+      rangeEndOffset: endOffset,
+      recipients: [],
+      active: true,
+    };
+    try {
+      await api.createReportSchedule(newSchedule);
+      setIsCreatingSchedule(false);
+      setSchedName(''); setSchedFreq('WEEKLY'); setSchedWeekDays([]); setDailyScope('YESTERDAY');
+      loadSchedules();
+    } catch (err) { console.error('Failed to create report schedule:', err); }
   };
 
   const handleDeleteSchedule = async (id: string) => {
-      try {
-          await api.deleteReportSchedule(id);
-          loadSchedules();
-      } catch (err) {
-          console.error('Failed to delete report schedule:', err);
-      }
+    try { await api.deleteReportSchedule(id); loadSchedules(); }
+    catch (err) { console.error('Failed to delete report schedule:', err); }
   };
 
   const toggleWeekDay = (dayIdx: number) => {
-      if (schedWeekDays.includes(dayIdx)) {
-          setSchedWeekDays(schedWeekDays.filter(d => d !== dayIdx));
-      } else {
-          setSchedWeekDays([...schedWeekDays, dayIdx].sort());
-      }
+    if (schedWeekDays.includes(dayIdx)) setSchedWeekDays(schedWeekDays.filter(d => d !== dayIdx));
+    else setSchedWeekDays([...schedWeekDays, dayIdx].sort());
   };
 
   const handlePreset = (preset: 'TODAY' | 'YESTERDAY' | 'THIS_WEEK' | 'LAST_WEEK' | 'THIS_MONTH' | 'LAST_MONTH' | 'THIS_YEAR' | 'LAST_YEAR') => {
-      const now = new Date();
-      let start = new Date();
-      let end = new Date();
-
-      switch(preset) {
-          case 'TODAY':
-              break;
-          case 'YESTERDAY':
-              start.setDate(now.getDate() - 1);
-              end.setDate(now.getDate() - 1);
-              break;
-          case 'THIS_WEEK':
-              start.setDate(now.getDate() - now.getDay());
-              break;
-          case 'LAST_WEEK':
-              start.setDate(now.getDate() - now.getDay() - 7);
-              end.setDate(start.getDate() + 6);
-              break;
-          case 'THIS_MONTH':
-              start.setDate(1);
-              break;
-          case 'LAST_MONTH':
-              start.setMonth(now.getMonth() - 1, 1);
-              end.setMonth(now.getMonth(), 0);
-              break;
-          case 'THIS_YEAR':
-              start.setMonth(0, 1);
-              break;
-          case 'LAST_YEAR':
-              start.setFullYear(now.getFullYear() - 1, 0, 1);
-              end.setFullYear(now.getFullYear() - 1, 11, 31);
-              break;
-      }
-      setStartDate(start.toISOString().split('T')[0]);
-      setEndDate(end.toISOString().split('T')[0]);
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
+    switch (preset) {
+      case 'TODAY': break;
+      case 'YESTERDAY': start.setDate(now.getDate() - 1); end.setDate(now.getDate() - 1); break;
+      case 'THIS_WEEK': start.setDate(now.getDate() - now.getDay()); break;
+      case 'LAST_WEEK': start.setDate(now.getDate() - now.getDay() - 7); end.setDate(start.getDate() + 6); break;
+      case 'THIS_MONTH': start.setDate(1); break;
+      case 'LAST_MONTH': start.setMonth(now.getMonth() - 1, 1); end.setMonth(now.getMonth(), 0); break;
+      case 'THIS_YEAR': start.setMonth(0, 1); break;
+      case 'LAST_YEAR': start.setFullYear(now.getFullYear() - 1, 0, 1); end.setFullYear(now.getFullYear() - 1, 11, 31); break;
+    }
+    setStartDate(start.toISOString().split('T')[0]);
+    setEndDate(end.toISOString().split('T')[0]);
   };
 
   const reportData = useMemo(() => {
     if (!startDate || !endDate) return null;
-    const startObj = new Date(startDate); startObj.setHours(0,0,0,0);
-    const endObj = new Date(endDate); endObj.setHours(23,59,59,999);
+    const startObj = new Date(startDate); startObj.setHours(0, 0, 0, 0);
+    const endObj = new Date(endDate); endObj.setHours(23, 59, 59, 999);
 
-    // Filter completed projects in period
     const completedProjects = projects.filter(p => {
       if (p.status !== ProjectStatus.COMPLETED) return false;
-
-      // Use actualEndDate if available, otherwise use completedAt
       const completionDate = p.actualEndDate || p.completedAt;
       if (!completionDate) return false;
-
       const date = new Date(completionDate);
       return date >= startObj && date <= endObj;
     });
 
-    // Show only standalone completed tasks (exclude project tasks - they appear under their projects)
     const completedInPeriod = tasks.filter(t =>
-      t.status === TaskStatus.COMPLETED &&
-      t.completedAt &&
-      new Date(t.completedAt) >= startObj &&
-      new Date(t.completedAt) <= endObj &&
-      !t.projectId  // Exclude project tasks
-    );
+      t.status === TaskStatus.COMPLETED && t.completedAt &&
+      new Date(t.completedAt) >= startObj && new Date(t.completedAt) <= endObj && !t.projectId);
 
     const createdInPeriod = tasks.filter(t => new Date(t.createdAt) >= startObj && new Date(t.createdAt) <= endObj);
     const dueInPeriod = tasks.filter(t => t.dueDate && new Date(t.dueDate) >= startObj && new Date(t.dueDate) <= endObj);
 
-    let totalRevenue = 0; let totalTimeSaved = 0; let totalHoursLogged = 0;
-
-    // Calculate metrics from ALL completed tasks (standalone + project tasks)
+    let totalRevenue = 0, totalTimeSaved = 0, totalHoursLogged = 0;
     const allCompletedTasks = tasks.filter(t =>
-      t.status === TaskStatus.COMPLETED &&
-      t.completedAt &&
-      new Date(t.completedAt) >= startObj &&
-      new Date(t.completedAt) <= endObj
-    );
-
+      t.status === TaskStatus.COMPLETED && t.completedAt &&
+      new Date(t.completedAt) >= startObj && new Date(t.completedAt) <= endObj);
     allCompletedTasks.forEach(t => {
-        totalHoursLogged += t.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
-        t.impactMetrics.forEach(m => {
-            if(m.type === ImpactType.REVENUE) totalRevenue += (m.achievedValue || 0);
-            if(m.type === ImpactType.EFFICIENCY) totalTimeSaved += (m.achievedValue || 0);
-        });
+      totalHoursLogged += t.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
+      t.impactMetrics.forEach(m => {
+        if (m.type === ImpactType.REVENUE) totalRevenue += (m.achievedValue || 0);
+        if (m.type === ImpactType.EFFICIENCY) totalTimeSaved += (m.achievedValue || 0);
+      });
     });
 
     const categoryMap: Record<string, number> = {};
-    // Count from all tasks in period (not just completed), use hoursSpent if available, otherwise estimatedHours
     const tasksInPeriod = tasks.filter(t => {
-        const taskDate = t.completedAt || t.dueDate || t.createdAt;
-        return taskDate && new Date(taskDate) >= startObj && new Date(taskDate) <= endObj;
+      const taskDate = t.completedAt || t.dueDate || t.createdAt;
+      return taskDate && new Date(taskDate) >= startObj && new Date(taskDate) <= endObj;
     });
     tasksInPeriod.forEach(t => {
-        t.subtasks.forEach(s => {
-            const hours = s.hoursSpent > 0 ? s.hoursSpent : s.estimatedHours;
-            categoryMap[s.category] = (categoryMap[s.category] || 0) + hours;
-        });
+      t.subtasks.forEach(s => {
+        const hours = s.hoursSpent > 0 ? s.hoursSpent : s.estimatedHours;
+        categoryMap[s.category] = (categoryMap[s.category] || 0) + hours;
+      });
     });
-    const categoryDistribution = Object.entries(categoryMap).map(([name, value]) => ({ name, value })).filter(item => item.value > 0);
+    const categoryDistribution = Object.entries(categoryMap).map(([name, value]) => ({ name, value })).filter(i => i.value > 0);
 
     const statusMap: Record<string, number> = {};
-    tasks.forEach(t => {
-        statusMap[t.status] = (statusMap[t.status] || 0) + 1;
-    });
+    tasks.forEach(t => { statusMap[t.status] = (statusMap[t.status] || 0) + 1; });
     const statusDistribution = Object.entries(statusMap).map(([name, value]) => ({ name: name.replace('_', ' '), value }));
 
     return {
-        completed: completedInPeriod, created: createdInPeriod, due: dueInPeriod,
-        completedProjects,
-        metrics: { revenue: totalRevenue, timeSaved: totalTimeSaved, hoursLogged: totalHoursLogged, completionRate: dueInPeriod.length > 0 ? Math.round((completedInPeriod.length / dueInPeriod.length) * 100) : 0 },
-        charts: { statusDistribution, categoryDistribution }
+      completed: completedInPeriod, created: createdInPeriod, due: dueInPeriod, completedProjects,
+      metrics: { revenue: totalRevenue, timeSaved: totalTimeSaved, hoursLogged: totalHoursLogged, completionRate: dueInPeriod.length > 0 ? Math.round((completedInPeriod.length / dueInPeriod.length) * 100) : 0 },
+      charts: { statusDistribution, categoryDistribution },
     };
   }, [tasks, projects, startDate, endDate]);
 
   const handlePrint = () => window.print();
 
-  const getFriendlyDescription = (s: ReportSchedule) => {
-      if (s.frequency === 'DAILY') {
-          return `Daily (Data from ${s.dailyScope === 'TODAY' ? 'Today' : 'Yesterday'})`;
-      }
-      if (s.frequency === 'WEEKLY') {
-          const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-          const dayNames = s.weekDays?.map(d => days[d]).join(', ');
-          return `Weekly on ${dayNames} (Prev 7 Days)`;
-      }
-      if (s.frequency === 'MONTHLY') {
-          const dayStr = s.monthlyRunDay === 32 ? 'Last Day' : `${s.monthlyRunDay}${getOrdinal(s.monthlyRunDay || 1)}`;
-          const scopeStr = s.monthlyScope === 'CALENDAR_MONTH' ? 'Prev Calendar Month' : `Last ${s.monthlyRollingValue} Days`;
-          return `Monthly on the ${dayStr} (${scopeStr})`;
-      }
-      return `Custom (Every ${s.customInterval} Days)`;
+  const getOrdinal = (n: number) => {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return s[(v - 20) % 10] || s[v] || s[0];
   };
 
-  const getOrdinal = (n: number) => {
-      const s = ["th", "st", "nd", "rd"];
-      const v = n % 100;
-      return s[(v - 20) % 10] || s[v] || s[0];
+  const getFriendlyDescription = (s: ReportSchedule) => {
+    if (s.frequency === 'DAILY') return `Daily (Data from ${s.dailyScope === 'TODAY' ? 'Today' : 'Yesterday'})`;
+    if (s.frequency === 'WEEKLY') {
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      return `Weekly on ${s.weekDays?.map(d => days[d]).join(', ')} (Prev 7 Days)`;
+    }
+    if (s.frequency === 'MONTHLY') {
+      const dayStr = s.monthlyRunDay === 32 ? 'Last Day' : `${s.monthlyRunDay}${getOrdinal(s.monthlyRunDay || 1)}`;
+      const scopeStr = s.monthlyScope === 'CALENDAR_MONTH' ? 'Prev Calendar Month' : `Last ${s.monthlyRollingValue} Days`;
+      return `Monthly on the ${dayStr} (${scopeStr})`;
+    }
+    return `Custom (Every ${s.customInterval} Days)`;
   };
 
   const toggleProjectExpanded = (projectId: string) => {
     setExpandedProjectIds(prev => {
       const next = new Set(prev);
-      if (next.has(projectId)) {
-        next.delete(projectId);
-      } else {
-        next.add(projectId);
-      }
+      next.has(projectId) ? next.delete(projectId) : next.add(projectId);
       return next;
     });
   };
 
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 pb-12">
-        <div className="flex gap-4 border-b border-slate-200 print:hidden">
-            <button
-                onClick={() => setActiveTab('GENERATE')}
-                className={`pb-4 px-2 text-sm font-bold flex items-center gap-2 ${activeTab === 'GENERATE' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-                <BarChart2 className="w-4 h-4"/> Report Generator
-            </button>
-            <button
-                onClick={() => setActiveTab('SCHEDULE')}
-                className={`pb-4 px-2 text-sm font-bold flex items-center gap-2 ${activeTab === 'SCHEDULE' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-                <ClockIcon className="w-4 h-4"/> Automation & Schedules
-            </button>
-            <button
-                onClick={() => setActiveTab('TRENDS')}
-                className={`pb-4 px-2 text-sm font-bold flex items-center gap-2 ${activeTab === 'TRENDS' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-                <TrendingUp className="w-4 h-4"/> Trends
-            </button>
+  const presets: [string, Parameters<typeof handlePreset>[0]][] = [
+    ['Today', 'TODAY'], ['Yesterday', 'YESTERDAY'], ['This Week', 'THIS_WEEK'], ['Last Week', 'LAST_WEEK'],
+    ['This Month', 'THIS_MONTH'], ['Last Month', 'LAST_MONTH'], ['This Year', 'THIS_YEAR'], ['Last Year', 'LAST_YEAR'],
+  ];
+
+  const kpiPct = (achieved: number, target: number) => target > 0 ? Math.min(100, Math.round((achieved / target) * 100)) : 0;
+  const sym = (m: { type: ImpactType; currency?: string }) => m.type === ImpactType.REVENUE ? (m.currency === 'EUR' ? '€' : m.currency === 'GBP' ? '£' : '$') : '';
+
+  const renderTaskCard = (task: Task, idx?: number) => {
+    const totalHours = task.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
+    const completedSubtasks = task.subtasks.filter(s => s.completed).length;
+    const progress = task.subtasks.length > 0 ? Math.round((completedSubtasks / task.subtasks.length) * 100) : 100;
+    return (
+      <div className="subpanel" key={task.id}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              {idx != null && <span className="num" style={{ fontSize: 12, fontWeight: 800, color: 'var(--faint)' }}>#{idx + 1}</span>}
+              <h4 style={{ fontSize: 15, fontWeight: 800, margin: 0 }}>{task.title}</h4>
+            </div>
+            {task.description && <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 8px' }}>{task.description}</p>}
+            <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--muted)', flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Calendar className="w-3 h-3" /> {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : 'N/A'}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock className="w-3 h-3" /> {totalHours.toFixed(1)}h</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle2 className="w-3 h-3" /> {progress}%</span>
+            </div>
+          </div>
+          <span className={'pri ' + priorityClass(task.priority)}>{task.priority}</span>
         </div>
+        {task.impactMetrics.length > 0 && (
+          <div className="panel" style={{ boxShadow: 'none', marginBottom: 12 }}>
+            <div className="flbl" style={{ marginBottom: 10 }}><TrendingUp className="w-[14px] h-[14px]" /> KEY PERFORMANCE INDICATORS</div>
+            <div className="grid-2">
+              {task.impactMetrics.map(m => {
+                const pct = kpiPct(m.achievedValue || 0, m.value);
+                return (
+                  <div key={m.id} className="subpanel">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <div><div style={{ fontSize: 11, fontWeight: 800, color: 'var(--ink2)' }}>{m.type}</div>{m.description && <div style={{ fontSize: 10, color: 'var(--faint)' }}>{m.description}</div>}</div>
+                      <span className="tag" style={{ background: pct >= 100 ? 'var(--green-bg)' : 'var(--inset)', color: pct >= 100 ? 'var(--green-ink)' : 'var(--ink2)' }}>{pct}%</span>
+                    </div>
+                    <div className="num" style={{ fontSize: 15, fontWeight: 800 }}>{sym(m)}{(m.achievedValue || 0).toLocaleString()} <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--faint)' }}>/ {sym(m)}{m.value.toLocaleString()}</span></div>
+                    <div className="bar" style={{ marginTop: 6 }}><i style={{ width: pct + '%', background: pct >= 100 ? 'var(--green)' : 'var(--accent)' }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {task.subtasks.length > 0 && (
+          <div className="panel" style={{ boxShadow: 'none' }}>
+            <div className="flbl" style={{ marginBottom: 10 }}>WORK BREAKDOWN ({task.subtasks.length} STEPS)</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {task.subtasks.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12, padding: '6px 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                    {s.completed ? <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--green)' }} /> : <span style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid var(--line)' }} />}
+                    <span style={{ color: s.completed ? 'var(--muted)' : 'var(--ink2)', fontWeight: 600, textDecoration: s.completed ? 'line-through' : 'none' }}>{s.title}</span>
+                    <span className="tag">{s.category}</span>
+                  </div>
+                  <span style={{ color: 'var(--muted)' }}>{s.hoursSpent}h{s.estimatedHours > 0 ? ` (${s.estimatedHours}h est.)` : ''}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {(task.beforeScenario || task.afterScenario || task.impactNarrative) && (
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--line-soft)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {task.impactNarrative && <p style={{ fontSize: 13, color: 'var(--ink2)', fontStyle: 'italic', margin: 0 }}>&ldquo;{task.impactNarrative}&rdquo;</p>}
+            {(task.beforeScenario || task.afterScenario) && (
+              <div className="grid-2">
+                {task.beforeScenario && <div className="subpanel"><div className="flbl" style={{ marginBottom: 4 }}>BEFORE</div><p style={{ fontSize: 12, color: 'var(--ink2)', margin: 0 }}>{task.beforeScenario}</p></div>}
+                {task.afterScenario && <div className="subpanel"><div className="flbl" style={{ marginBottom: 4, color: 'var(--green-ink)' }}>AFTER</div><p style={{ fontSize: 12, color: 'var(--ink2)', margin: 0 }}>{task.afterScenario}</p></div>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
-        {activeTab === 'GENERATE' && (
+  const TABS: [typeof activeTab, string, React.ReactNode][] = [
+    ['GENERATE', 'Report Generator', <BarChart2 className="w-4 h-4" />],
+    ['SCHEDULE', 'Automation & Schedules', <ClockIcon className="w-4 h-4" />],
+    ['TRENDS', 'Trends', <TrendingUp className="w-4 h-4" />],
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--line)' }} className="print:hidden">
+        {TABS.map(([id, label, icon]) => (
+          <button key={id} className={'modal-tab' + (activeTab === id ? ' on' : '')} onClick={() => setActiveTab(id)} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>{icon} {label}</button>
+        ))}
+      </div>
+
+      {activeTab === 'GENERATE' && (
+        <>
+          <div className="panel" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="seg" style={{ flexWrap: 'wrap' }}>
+              {presets.map(([label, key]) => <button key={key} onClick={() => handlePreset(key)}>{label}</button>)}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input type="date" className="input" style={{ width: 'auto' }} value={startDate} onChange={e => setStartDate(e.target.value)} />
+              <span style={{ color: 'var(--muted)', fontWeight: 700 }}>→</span>
+              <input type="date" className="input" style={{ width: 'auto' }} value={endDate} onChange={e => setEndDate(e.target.value)} />
+              <button className="btn" onClick={handlePrint}><Printer className="w-4 h-4" /> Export</button>
+            </div>
+          </div>
+
+          {reportData && (
             <>
-                <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm gap-4 print:hidden">
-                    <div className="flex flex-col md:flex-row gap-4 items-center w-full xl:w-auto">
-                        <div className="flex flex-wrap gap-2">
-                            <button onClick={() => handlePreset('TODAY')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">Today</button>
-                            <button onClick={() => handlePreset('YESTERDAY')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">Yesterday</button>
-                            <div className="w-px h-6 bg-slate-300 mx-1"></div>
-                            <button onClick={() => handlePreset('THIS_WEEK')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">This Week</button>
-                            <button onClick={() => handlePreset('LAST_WEEK')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">Last Week</button>
-                             <div className="w-px h-6 bg-slate-300 mx-1"></div>
-                            <button onClick={() => handlePreset('THIS_MONTH')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">This Month</button>
-                            <button onClick={() => handlePreset('LAST_MONTH')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">Last Month</button>
-                            <div className="w-px h-6 bg-slate-300 mx-1"></div>
-                            <button onClick={() => handlePreset('THIS_YEAR')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">This Year</button>
-                            <button onClick={() => handlePreset('LAST_YEAR')} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded">Last Year</button>
-                        </div>
-                    </div>
+              <div>
+                <h2 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em', margin: 0 }}>Performance Report</h2>
+                <p style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 600, marginTop: 4 }}>Period: {new Date(startDate).toLocaleDateString()} — {new Date(endDate).toLocaleDateString()}</p>
+              </div>
 
-                    <div className="flex flex-col md:flex-row gap-4 items-center w-full xl:w-auto">
-                        <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg border border-slate-200">
-                            <span className="text-xs font-bold text-slate-500 pl-2">From</span>
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-white border border-slate-300 text-black text-xs rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500"/>
-                            <span className="text-xs font-bold text-slate-500">To</span>
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-white border border-slate-300 text-black text-xs rounded px-2 py-1 outline-none focus:ring-1 focus:ring-blue-500"/>
-                        </div>
-                        <button onClick={handlePrint} className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors text-sm font-medium whitespace-nowrap">
-                            <Printer className="w-4 h-4" /> Export
-                        </button>
-                    </div>
+              <div className="grid-4">
+                {[
+                  { l: 'Tasks Completed', v: String(reportData.completed.length), ic: <CheckCircle2 className="w-[18px] h-[18px]" />, c: 'var(--green-ink)' },
+                  { l: 'Revenue Impact', v: '€' + reportData.metrics.revenue.toLocaleString(), ic: <DollarSign className="w-[18px] h-[18px]" />, c: 'var(--accent)' },
+                  { l: 'Hours Logged', v: reportData.metrics.hoursLogged.toFixed(1), ic: <Clock className="w-[18px] h-[18px]" />, c: 'var(--amber-ink)' },
+                  { l: 'Time Saved (hrs)', v: String(reportData.metrics.timeSaved), ic: <TrendingUp className="w-[18px] h-[18px]" />, c: '#8b5cf6' },
+                ].map((k, i) => (
+                  <div className="panel" key={i}>
+                    <div className="kl" style={{ color: k.c }}>{k.ic} {k.l}</div>
+                    <div className="num" style={{ fontSize: 30, fontWeight: 800, marginTop: 10, letterSpacing: '-.03em' }}>{k.v}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid-2">
+                <div className="panel">
+                  <div className="card-h"><div><h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><BarChart2 className="w-[18px] h-[18px]" style={{ color: 'var(--accent)' }} /> Tasks by Status</h3></div></div>
+                  <BarChart data={reportData.charts.statusDistribution.map(s => ({ label: s.name, value: s.value, color: STATUS_COLOR[s.name] || '#94a3b8' }))} w={560} h={230} />
                 </div>
-
-                {reportData && (
-                <div className="print:block">
-                    <div className="mb-8 text-center md:text-left">
-                        <h1 className="text-3xl font-bold text-slate-900">Performance Report</h1>
-                        <p className="text-slate-500 mt-2 text-sm font-medium">Period: {new Date(startDate).toLocaleDateString()} — {new Date(endDate).toLocaleDateString()}</p>
+                <div className="panel">
+                  <div className="card-h"><div><h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><PieChartIcon className="w-[18px] h-[18px]" style={{ color: '#8b5cf6' }} /> Work Categories (Hours)</h3></div></div>
+                  {reportData.charts.categoryDistribution.length > 0 ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+                      <Donut size={168} stroke={24} segments={reportData.charts.categoryDistribution.map((c, i) => ({ label: c.name, value: c.value, color: COLORS[i % COLORS.length] }))} center={{ v: reportData.charts.categoryDistribution.reduce((s, c) => s + c.value, 0).toFixed(0) + 'h', l: 'logged' }} />
+                      <div className="legend" style={{ flex: 1 }}>
+                        {reportData.charts.categoryDistribution.map((c, i) => <div className="lg-row" key={i}><i className="sw" style={{ background: COLORS[i % COLORS.length] }} />{c.name}<span className="v num">{c.value}h</span></div>)}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2 text-slate-500"><CheckCircle2 className="w-5 h-5 text-green-500" /><span className="text-sm font-bold uppercase">Tasks Completed</span></div>
-                            <div className="flex items-end gap-2"><span className="text-3xl font-bold text-slate-800">{reportData.completed.length}</span></div>
-                        </div>
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2 text-slate-500"><DollarSign className="w-5 h-5 text-emerald-500" /><span className="text-sm font-bold uppercase">Revenue Impact</span></div>
-                            <div className="flex items-end gap-2"><span className="text-3xl font-bold text-slate-800">€{reportData.metrics.revenue.toLocaleString()}</span></div>
-                        </div>
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2 text-slate-500"><Clock className="w-5 h-5 text-blue-500" /><span className="text-sm font-bold uppercase">Hours Logged</span></div>
-                            <div className="flex items-end gap-2"><span className="text-3xl font-bold text-slate-800">{reportData.metrics.hoursLogged.toFixed(1)}</span></div>
-                        </div>
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <div className="flex items-center gap-2 mb-2 text-slate-500"><TrendingUp className="w-5 h-5 text-purple-500" /><span className="text-sm font-bold uppercase">Time Saved (hrs)</span></div>
-                            <div className="flex items-end gap-2"><span className="text-3xl font-bold text-slate-800">{reportData.metrics.timeSaved}</span></div>
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8 print:break-inside-avoid">
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><BarChart2 className="w-5 h-5 text-blue-500" /> Tasks by Status</h3>
-                            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={reportData.charts.statusDistribution}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" axisLine={false} tickLine={false} /><YAxis axisLine={false} tickLine={false} /><Tooltip /><Bar dataKey="value" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={40} /></BarChart></ResponsiveContainer></div>
-                        </div>
-                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2"><PieChartIcon className="w-5 h-5 text-purple-500" /> Work Categories (Hours)</h3>
-                            <div className="h-64"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={reportData.charts.categoryDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{reportData.charts.categoryDistribution.map((entry, index) => (<Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />))}</Pie><Tooltip /><Legend /></PieChart></ResponsiveContainer></div>
-                        </div>
-                    </div>
-
-                    {/* Detailed Task Breakdown */}
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm print:break-before-page">
-                        <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                            <CheckCircle2 className="w-5 h-5 text-green-500" />
-                            Completed Tasks Breakdown
-                        </h3>
-
-                        {reportData.completed.length === 0 ? (
-                            <div className="text-center py-12 text-slate-400">
-                                <p>No tasks completed in this period.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-6">
-                                {reportData.completed.map((task, index) => {
-                                    const totalHours = task.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
-                                    const completedSubtasks = task.subtasks.filter(s => s.completed).length;
-                                    const progress = task.subtasks.length > 0 ? Math.round((completedSubtasks / task.subtasks.length) * 100) : 100;
-
-                                    return (
-                                        <div key={task.id} className="border border-slate-200 rounded-xl p-6 hover:shadow-md transition-shadow print:break-inside-avoid">
-                                            {/* Task Header */}
-                                            <div className="flex items-start justify-between mb-4">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-3 mb-2">
-                                                        <span className="text-xs font-bold text-slate-400">#{index + 1}</span>
-                                                        <h4 className="text-lg font-bold text-slate-800">{task.title}</h4>
-                                                    </div>
-                                                    {task.description && (
-                                                        <p className="text-sm text-slate-600 mb-3">{task.description}</p>
-                                                    )}
-                                                    <div className="flex items-center gap-4 text-xs text-slate-500">
-                                                        <span className="flex items-center gap-1">
-                                                            <Calendar className="w-3 h-3" />
-                                                            Completed: {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : 'N/A'}
-                                                        </span>
-                                                        <span className="flex items-center gap-1">
-                                                            <Clock className="w-3 h-3" />
-                                                            {totalHours.toFixed(1)} hours logged
-                                                        </span>
-                                                        <span className="flex items-center gap-1">
-                                                            <CheckCircle2 className="w-3 h-3" />
-                                                            {progress}% complete
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                                        task.priority === 'CRITICAL' ? 'bg-red-100 text-red-700' :
-                                                        task.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
-                                                        task.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
-                                                        'bg-green-100 text-green-700'
-                                                    }`}>
-                                                        {task.priority}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            {/* KPIs Section */}
-                                            {task.impactMetrics.length > 0 && (
-                                                <div className="mb-4 bg-gradient-to-r from-emerald-50 to-blue-50 p-4 rounded-lg border border-emerald-100">
-                                                    <h5 className="text-xs font-bold text-slate-700 uppercase mb-3 flex items-center gap-2">
-                                                        <TrendingUp className="w-4 h-4 text-emerald-600" />
-                                                        Key Performance Indicators
-                                                    </h5>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                        {task.impactMetrics.map(metric => {
-                                                            const target = metric.value;
-                                                            const achieved = metric.achievedValue || 0;
-                                                            const percent = target > 0 ? Math.min(100, Math.round((achieved / target) * 100)) : 0;
-                                                            const currencySymbol = metric.type === ImpactType.REVENUE
-                                                                ? (metric.currency === 'EUR' ? '€' : metric.currency === 'GBP' ? '£' : '$')
-                                                                : '';
-
-                                                            return (
-                                                                <div key={metric.id} className="bg-white p-3 rounded-lg border border-slate-200">
-                                                                    <div className="flex justify-between items-start mb-2">
-                                                                        <div>
-                                                                            <p className="text-xs font-bold text-slate-600">{metric.type}</p>
-                                                                            {metric.description && (
-                                                                                <p className="text-[10px] text-slate-400">{metric.description}</p>
-                                                                            )}
-                                                                        </div>
-                                                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                                                                            percent >= 100 ? 'bg-green-100 text-green-700' :
-                                                                            percent >= 80 ? 'bg-blue-100 text-blue-700' :
-                                                                            percent >= 50 ? 'bg-amber-100 text-amber-700' :
-                                                                            'bg-red-100 text-red-700'
-                                                                        }`}>
-                                                                            {percent}%
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="flex items-baseline gap-2 mb-2">
-                                                                        <span className="text-lg font-bold text-slate-800">
-                                                                            {currencySymbol}{achieved.toLocaleString()}
-                                                                        </span>
-                                                                        <span className="text-xs text-slate-400">
-                                                                            / {currencySymbol}{target.toLocaleString()} target
-                                                                        </span>
-                                                                    </div>
-                                                                    <div className="w-full bg-slate-100 rounded-full h-1.5">
-                                                                        <div
-                                                                            className={`h-1.5 rounded-full transition-all ${
-                                                                                percent >= 100 ? 'bg-green-500' :
-                                                                                percent >= 80 ? 'bg-blue-500' :
-                                                                                percent >= 50 ? 'bg-amber-500' :
-                                                                                'bg-red-500'
-                                                                            }`}
-                                                                            style={{ width: `${Math.min(100, percent)}%` }}
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Subtasks Breakdown */}
-                                            {task.subtasks.length > 0 && (
-                                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
-                                                    <h5 className="text-xs font-bold text-slate-700 uppercase mb-3">Work Breakdown ({task.subtasks.length} steps)</h5>
-                                                    <div className="space-y-2">
-                                                        {task.subtasks.map(subtask => (
-                                                            <div key={subtask.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-slate-100">
-                                                                <div className="flex items-center gap-2 flex-1">
-                                                                    {subtask.completed ? (
-                                                                        <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                                                                    ) : (
-                                                                        <div className="w-4 h-4 rounded-full border-2 border-slate-300 flex-shrink-0" />
-                                                                    )}
-                                                                    <span className={subtask.completed ? 'text-slate-500 line-through' : 'text-slate-700 font-medium'}>
-                                                                        {subtask.title}
-                                                                    </span>
-                                                                    <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
-                                                                        {subtask.category}
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex items-center gap-3 text-slate-500">
-                                                                    <span>{subtask.hoursSpent}h logged</span>
-                                                                    {subtask.estimatedHours > 0 && (
-                                                                        <span className="text-[10px]">({subtask.estimatedHours}h est.)</span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Strategic Context */}
-                                            {(task.beforeScenario || task.afterScenario || task.impactNarrative) && (
-                                                <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
-                                                    {task.impactNarrative && (
-                                                        <div>
-                                                            <h5 className="text-xs font-bold text-slate-700 uppercase mb-1">Impact Summary</h5>
-                                                            <p className="text-sm text-slate-600 italic">"{task.impactNarrative}"</p>
-                                                        </div>
-                                                    )}
-                                                    {(task.beforeScenario || task.afterScenario) && (
-                                                        <div className="grid grid-cols-2 gap-3 text-xs">
-                                                            {task.beforeScenario && (
-                                                                <div className="bg-slate-50 p-3 rounded border border-slate-100">
-                                                                    <p className="font-bold text-slate-500 mb-1">Before</p>
-                                                                    <p className="text-slate-600">{task.beforeScenario}</p>
-                                                                </div>
-                                                            )}
-                                                            {task.afterScenario && (
-                                                                <div className="bg-emerald-50 p-3 rounded border border-emerald-100">
-                                                                    <p className="font-bold text-emerald-700 mb-1">After</p>
-                                                                    <p className="text-slate-600">{task.afterScenario}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Completed Projects Section */}
-                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mt-8 print:break-before-page">
-                        <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">
-                            <Briefcase className="w-5 h-5 text-purple-500" />
-                            Completed Projects
-                        </h3>
-
-                        {reportData.completedProjects.length === 0 ? (
-                            <div className="text-center py-12 text-slate-400">
-                                <p>No projects completed in this period.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-6">
-                                {reportData.completedProjects.map((project, index) => {
-                                    const projectTasks = tasks.filter(t => t.projectId === project.id);
-                                    const completedTasks = projectTasks.filter(t => t.status === TaskStatus.COMPLETED);
-                                    const totalProjectHours = projectTasks.reduce((sum, t) =>
-                                        sum + t.subtasks.reduce((tSum, s) => tSum + s.hoursSpent, 0), 0
-                                    );
-                                    const isExpanded = expandedProjectIds.has(project.id);
-
-                                    return (
-                                        <div key={project.id} className="border border-purple-200 rounded-xl p-6 hover:shadow-md transition-shadow print:break-inside-avoid bg-purple-50/30">
-                                            {/* Project Header */}
-                                            <div className="flex items-start justify-between mb-4">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-3 mb-2">
-                                                        <span className="text-xs font-bold text-purple-400">#{index + 1}</span>
-                                                        <h4 className="text-lg font-bold text-purple-800 flex items-center gap-2">
-                                                            <Briefcase className="w-5 h-5" />
-                                                            {project.title}
-                                                        </h4>
-                                                    </div>
-                                                    {project.description && (
-                                                        <p className="text-sm text-slate-600 mb-3">{project.description}</p>
-                                                    )}
-                                                    <div className="flex items-center gap-4 text-xs text-slate-500">
-                                                        <span className="flex items-center gap-1">
-                                                            <Calendar className="w-3 h-3" />
-                                                            Completed: {project.actualEndDate ? new Date(project.actualEndDate).toLocaleDateString() : 'N/A'}
-                                                        </span>
-                                                        <span className="flex items-center gap-1">
-                                                            <Clock className="w-3 h-3" />
-                                                            {totalProjectHours.toFixed(1)} hours logged
-                                                        </span>
-                                                        <span className="flex items-center gap-1">
-                                                            <CheckCircle2 className="w-3 h-3" />
-                                                            {projectTasks.length} {projectTasks.length === 1 ? 'task' : 'tasks'}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                                        project.priority === 'CRITICAL' ? 'bg-red-100 text-red-700' :
-                                                        project.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
-                                                        project.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
-                                                        'bg-green-100 text-green-700'
-                                                    }`}>
-                                                        {project.priority}
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            {/* Project Stats */}
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                                                <div className="bg-white p-3 rounded-lg border border-purple-100">
-                                                    <p className="text-xs text-slate-500 font-medium mb-1">Total Tasks</p>
-                                                    <p className="text-xl font-bold text-slate-800">{projectTasks.length}</p>
-                                                </div>
-                                                <div className="bg-white p-3 rounded-lg border border-purple-100">
-                                                    <p className="text-xs text-slate-500 font-medium mb-1">Completed</p>
-                                                    <p className="text-xl font-bold text-green-600">{completedTasks.length}</p>
-                                                </div>
-                                                <div className="bg-white p-3 rounded-lg border border-purple-100">
-                                                    <p className="text-xs text-slate-500 font-medium mb-1">Total Hours</p>
-                                                    <p className="text-xl font-bold text-blue-600">{totalProjectHours.toFixed(1)}h</p>
-                                                </div>
-                                                <div className="bg-white p-3 rounded-lg border border-purple-100">
-                                                    <p className="text-xs text-slate-500 font-medium mb-1">Completion</p>
-                                                    <p className="text-xl font-bold text-purple-600">
-                                                        {projectTasks.length > 0 ? Math.round((completedTasks.length / projectTasks.length) * 100) : 0}%
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            {/* Aggregated Impact */}
-                                            {project.aggregatedImpact && (
-                                                <div className="mb-4 bg-gradient-to-r from-emerald-50 to-blue-50 p-4 rounded-lg border border-emerald-100">
-                                                    <h5 className="text-xs font-bold text-slate-700 uppercase mb-3 flex items-center gap-2">
-                                                        <TrendingUp className="w-4 h-4 text-emerald-600" />
-                                                        Project Impact Summary
-                                                    </h5>
-                                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                                        {project.aggregatedImpact.revenue > 0 && (
-                                                            <div className="bg-white p-3 rounded-lg border border-emerald-200">
-                                                                <p className="text-xs text-slate-500 mb-1">Revenue</p>
-                                                                <p className="text-lg font-bold text-green-600">
-                                                                    €{project.aggregatedImpact.revenue.toLocaleString()}
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                        {project.aggregatedImpact.timeSaved > 0 && (
-                                                            <div className="bg-white p-3 rounded-lg border border-blue-200">
-                                                                <p className="text-xs text-slate-500 mb-1">Time Saved</p>
-                                                                <p className="text-lg font-bold text-blue-600">
-                                                                    {project.aggregatedImpact.timeSaved.toFixed(1)}h
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                        {project.aggregatedImpact.costReduction > 0 && (
-                                                            <div className="bg-white p-3 rounded-lg border border-purple-200">
-                                                                <p className="text-xs text-slate-500 mb-1">Cost Saved</p>
-                                                                <p className="text-lg font-bold text-purple-600">
-                                                                    ${project.aggregatedImpact.costReduction.toLocaleString()}
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                        {project.aggregatedImpact.csat > 0 && (
-                                                            <div className="bg-white p-3 rounded-lg border border-orange-200">
-                                                                <p className="text-xs text-slate-500 mb-1">CSAT</p>
-                                                                <p className="text-lg font-bold text-orange-600">
-                                                                    {project.aggregatedImpact.csat.toFixed(1)}
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Toggle Tasks Button */}
-                                            {projectTasks.length > 0 && (
-                                                <button
-                                                    onClick={() => toggleProjectExpanded(project.id)}
-                                                    className="w-full mt-4 py-2 px-4 bg-purple-100 hover:bg-purple-200 border border-purple-200 rounded-lg text-sm font-bold text-purple-700 flex items-center justify-center gap-2 transition-colors"
-                                                >
-                                                    {isExpanded ? (
-                                                        <>
-                                                            <ChevronDown className="w-4 h-4" />
-                                                            Hide Tasks ({projectTasks.length})
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <ChevronRight className="w-4 h-4" />
-                                                            View Tasks ({projectTasks.length})
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
-
-                                            {/* Expanded Task List */}
-                                            {isExpanded && projectTasks.length > 0 && (
-                                                <div className="mt-4 border-t border-purple-200 pt-4 space-y-4">
-                                                    {projectTasks.map((task) => {
-                                                        const taskHours = task.subtasks.reduce((sum, s) => sum + s.hoursSpent, 0);
-                                                        const completedSubtasks = task.subtasks.filter(s => s.completed).length;
-                                                        const taskProgress = task.subtasks.length > 0
-                                                            ? Math.round((completedSubtasks / task.subtasks.length) * 100)
-                                                            : 100;
-
-                                                        return (
-                                                            <div key={task.id} className="bg-white border border-purple-100 rounded-lg p-5 print:break-inside-avoid">
-                                                                {/* Task Header */}
-                                                                <div className="flex items-start justify-between mb-3">
-                                                                    <div className="flex-1">
-                                                                        <h5 className="text-base font-bold text-slate-800 mb-1">{task.title}</h5>
-                                                                        {task.description && (
-                                                                            <p className="text-sm text-slate-600 mb-2">{task.description}</p>
-                                                                        )}
-                                                                        <div className="flex items-center gap-3 text-xs text-slate-500">
-                                                                            <span className="flex items-center gap-1">
-                                                                                <Calendar className="w-3 h-3" />
-                                                                                Completed: {task.completedAt ? new Date(task.completedAt).toLocaleDateString() : 'N/A'}
-                                                                            </span>
-                                                                            <span className="flex items-center gap-1">
-                                                                                <Clock className="w-3 h-3" />
-                                                                                {taskHours.toFixed(1)}h logged
-                                                                            </span>
-                                                                            <span className="flex items-center gap-1">
-                                                                                <CheckCircle2 className="w-3 h-3" />
-                                                                                {taskProgress}% complete
-                                                                            </span>
-                                                                        </div>
-                                                                    </div>
-                                                                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                                                        task.priority === 'CRITICAL' ? 'bg-red-100 text-red-700' :
-                                                                        task.priority === 'HIGH' ? 'bg-orange-100 text-orange-700' :
-                                                                        task.priority === 'MEDIUM' ? 'bg-blue-100 text-blue-700' :
-                                                                        'bg-green-100 text-green-700'
-                                                                    }`}>
-                                                                        {task.priority}
-                                                                    </span>
-                                                                </div>
-
-                                                                {/* KPIs Section */}
-                                                                {task.impactMetrics.length > 0 && (
-                                                                    <div className="mb-3 bg-gradient-to-r from-emerald-50 to-blue-50 p-3 rounded-lg border border-emerald-100">
-                                                                        <h6 className="text-xs font-bold text-slate-700 uppercase mb-2 flex items-center gap-2">
-                                                                            <TrendingUp className="w-3 h-3 text-emerald-600" />
-                                                                            Key Performance Indicators
-                                                                        </h6>
-                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                                                            {task.impactMetrics.map(metric => {
-                                                                                const target = metric.value;
-                                                                                const achieved = metric.achievedValue || 0;
-                                                                                const percent = target > 0 ? Math.min(100, Math.round((achieved / target) * 100)) : 0;
-                                                                                const currencySymbol = metric.type === ImpactType.REVENUE
-                                                                                    ? (metric.currency === 'EUR' ? '€' : metric.currency === 'GBP' ? '£' : '$')
-                                                                                    : '';
-
-                                                                                return (
-                                                                                    <div key={metric.id} className="bg-white p-2 rounded border border-slate-200">
-                                                                                        <div className="flex justify-between items-start mb-1">
-                                                                                            <div>
-                                                                                                <p className="text-xs font-bold text-slate-600">{metric.type}</p>
-                                                                                                {metric.description && (
-                                                                                                    <p className="text-[10px] text-slate-400">{metric.description}</p>
-                                                                                                )}
-                                                                                            </div>
-                                                                                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                                                                                                percent >= 100 ? 'bg-green-100 text-green-700' :
-                                                                                                percent >= 80 ? 'bg-blue-100 text-blue-700' :
-                                                                                                percent >= 50 ? 'bg-amber-100 text-amber-700' :
-                                                                                                'bg-red-100 text-red-700'
-                                                                                            }`}>
-                                                                                                {percent}%
-                                                                                            </span>
-                                                                                        </div>
-                                                                                        <div className="flex items-baseline gap-1 mb-1">
-                                                                                            <span className="text-sm font-bold text-slate-800">
-                                                                                                {currencySymbol}{achieved.toLocaleString()}
-                                                                                            </span>
-                                                                                            <span className="text-[10px] text-slate-400">
-                                                                                                / {currencySymbol}{target.toLocaleString()}
-                                                                                            </span>
-                                                                                        </div>
-                                                                                        <div className="w-full bg-slate-100 rounded-full h-1">
-                                                                                            <div
-                                                                                                className={`h-1 rounded-full ${
-                                                                                                    percent >= 100 ? 'bg-green-500' :
-                                                                                                    percent >= 80 ? 'bg-blue-500' :
-                                                                                                    percent >= 50 ? 'bg-amber-500' :
-                                                                                                    'bg-red-500'
-                                                                                                }`}
-                                                                                                style={{ width: `${Math.min(100, percent)}%` }}
-                                                                                            />
-                                                                                        </div>
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Subtasks Breakdown */}
-                                                                {task.subtasks.length > 0 && (
-                                                                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                                                                        <h6 className="text-xs font-bold text-slate-700 uppercase mb-2">
-                                                                            Work Breakdown ({task.subtasks.length} steps)
-                                                                        </h6>
-                                                                        <div className="space-y-1.5">
-                                                                            {task.subtasks.map(subtask => (
-                                                                                <div key={subtask.id} className="flex items-center justify-between text-xs bg-white p-2 rounded border border-slate-100">
-                                                                                    <div className="flex items-center gap-2 flex-1">
-                                                                                        {subtask.completed ? (
-                                                                                            <CheckCircle2 className="w-3 h-3 text-green-500 flex-shrink-0" />
-                                                                                        ) : (
-                                                                                            <div className="w-3 h-3 rounded-full border-2 border-slate-300 flex-shrink-0" />
-                                                                                        )}
-                                                                                        <span className={subtask.completed ? 'text-slate-500 line-through' : 'text-slate-700 font-medium'}>
-                                                                                            {subtask.title}
-                                                                                        </span>
-                                                                                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
-                                                                                            {subtask.category}
-                                                                                        </span>
-                                                                                    </div>
-                                                                                    <div className="flex items-center gap-2 text-slate-500">
-                                                                                        <span>{subtask.hoursSpent}h logged</span>
-                                                                                        {subtask.estimatedHours > 0 && (
-                                                                                            <span className="text-[10px]">({subtask.estimatedHours}h est.)</span>
-                                                                                        )}
-                                                                                    </div>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Strategic Context */}
-                                                                {(task.beforeScenario || task.afterScenario || task.impactNarrative) && (
-                                                                    <div className="mt-3 pt-3 border-t border-slate-200 space-y-2">
-                                                                        {task.impactNarrative && (
-                                                                            <div>
-                                                                                <h6 className="text-xs font-bold text-slate-700 uppercase mb-1">Impact Summary</h6>
-                                                                                <p className="text-sm text-slate-600 italic">"{task.impactNarrative}"</p>
-                                                                            </div>
-                                                                        )}
-                                                                        {(task.beforeScenario || task.afterScenario) && (
-                                                                            <div className="grid grid-cols-2 gap-2 text-xs">
-                                                                                {task.beforeScenario && (
-                                                                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                                                                                        <p className="font-bold text-slate-500 mb-1">Before</p>
-                                                                                        <p className="text-slate-600">{task.beforeScenario}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                                {task.afterScenario && (
-                                                                                    <div className="bg-emerald-50 p-2 rounded border border-emerald-100">
-                                                                                        <p className="font-bold text-emerald-700 mb-1">After</p>
-                                                                                        <p className="text-slate-600">{task.afterScenario}</p>
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
+                  ) : <div className="empty" style={{ padding: '30px' }}><p>No hours logged in this period</p></div>}
                 </div>
+              </div>
+
+              <div className="panel">
+                <div className="card-h"><div><h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><CheckCircle2 className="w-[18px] h-[18px]" style={{ color: 'var(--green)' }} /> Completed Tasks Breakdown</h3></div></div>
+                {reportData.completed.length === 0 ? <div className="empty" style={{ padding: 40 }}><p>No tasks completed in this period.</p></div> : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>{reportData.completed.map((t, i) => renderTaskCard(t, i))}</div>
                 )}
+              </div>
+
+              <div className="panel">
+                <div className="card-h"><div><h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Briefcase className="w-[18px] h-[18px]" style={{ color: '#8b5cf6' }} /> Completed Projects</h3></div></div>
+                {reportData.completedProjects.length === 0 ? <div className="empty" style={{ padding: 40 }}><p>No projects completed in this period.</p></div> : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {reportData.completedProjects.map((project, index) => {
+                      const projectTasks = tasks.filter(t => t.projectId === project.id);
+                      const completedTasks = projectTasks.filter(t => t.status === TaskStatus.COMPLETED);
+                      const totalProjectHours = projectTasks.reduce((sum, t) => sum + t.subtasks.reduce((ts, s) => ts + s.hoursSpent, 0), 0);
+                      const isExpanded = expandedProjectIds.has(project.id);
+                      return (
+                        <div className="subpanel" key={project.id}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                                <span className="num" style={{ fontSize: 12, fontWeight: 800, color: 'var(--faint)' }}>#{index + 1}</span>
+                                <h4 style={{ fontSize: 15, fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}><Briefcase className="w-4 h-4" /> {project.title}</h4>
+                              </div>
+                              {project.description && <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 8px' }}>{project.description}</p>}
+                              <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--muted)', flexWrap: 'wrap' }}>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Calendar className="w-3 h-3" /> {project.actualEndDate ? new Date(project.actualEndDate).toLocaleDateString() : 'N/A'}</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Clock className="w-3 h-3" /> {totalProjectHours.toFixed(1)}h</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><CheckCircle2 className="w-3 h-3" /> {projectTasks.length} tasks</span>
+                              </div>
+                            </div>
+                            <span className={'pri ' + priorityClass(project.priority)}>{project.priority}</span>
+                          </div>
+                          <div className="grid-4">
+                            {[['Total Tasks', String(projectTasks.length), 'var(--ink)'], ['Completed', String(completedTasks.length), 'var(--green-ink)'], ['Total Hours', totalProjectHours.toFixed(1) + 'h', 'var(--accent)'], ['Completion', (projectTasks.length > 0 ? Math.round((completedTasks.length / projectTasks.length) * 100) : 0) + '%', '#8b5cf6']].map(([l, v, c], i) => (
+                              <div className="panel" key={i} style={{ boxShadow: 'none' }}><div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700 }}>{l}</div><div className="num" style={{ fontSize: 20, fontWeight: 800, color: c, marginTop: 4 }}>{v}</div></div>
+                            ))}
+                          </div>
+                          {project.aggregatedImpact && (
+                            <div className="panel" style={{ boxShadow: 'none', marginTop: 12 }}>
+                              <div className="flbl" style={{ marginBottom: 10 }}><TrendingUp className="w-[14px] h-[14px]" /> PROJECT IMPACT SUMMARY</div>
+                              <div className="grid-4">
+                                {project.aggregatedImpact.revenue > 0 && <div className="subpanel"><div style={{ fontSize: 11, color: 'var(--muted)' }}>Revenue</div><div className="num" style={{ fontSize: 17, fontWeight: 800, color: 'var(--green-ink)' }}>€{project.aggregatedImpact.revenue.toLocaleString()}</div></div>}
+                                {project.aggregatedImpact.timeSaved > 0 && <div className="subpanel"><div style={{ fontSize: 11, color: 'var(--muted)' }}>Time Saved</div><div className="num" style={{ fontSize: 17, fontWeight: 800, color: 'var(--accent)' }}>{project.aggregatedImpact.timeSaved.toFixed(1)}h</div></div>}
+                                {project.aggregatedImpact.costReduction > 0 && <div className="subpanel"><div style={{ fontSize: 11, color: 'var(--muted)' }}>Cost Saved</div><div className="num" style={{ fontSize: 17, fontWeight: 800, color: '#8b5cf6' }}>${project.aggregatedImpact.costReduction.toLocaleString()}</div></div>}
+                                {project.aggregatedImpact.csat > 0 && <div className="subpanel"><div style={{ fontSize: 11, color: 'var(--muted)' }}>CSAT</div><div className="num" style={{ fontSize: 17, fontWeight: 800, color: 'var(--amber-ink)' }}>{project.aggregatedImpact.csat.toFixed(1)}</div></div>}
+                              </div>
+                            </div>
+                          )}
+                          {projectTasks.length > 0 && (
+                            <button className="btn-g btn" style={{ width: '100%', justifyContent: 'center', marginTop: 12 }} onClick={() => toggleProjectExpanded(project.id)}>
+                              {isExpanded ? <><ChevronDown className="w-4 h-4" /> Hide Tasks ({projectTasks.length})</> : <><ChevronRight className="w-4 h-4" /> View Tasks ({projectTasks.length})</>}
+                            </button>
+                          )}
+                          {isExpanded && projectTasks.length > 0 && (
+                            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>{projectTasks.map(t => renderTaskCard(t))}</div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </>
-        )}
+          )}
+        </>
+      )}
 
-        {activeTab === 'SCHEDULE' && (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <div className="flex justify-between items-center mb-6">
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-800">Automated Report Schedules</h2>
-                        <p className="text-slate-500 text-sm">Configure reports to run automatically.</p>
-                    </div>
-                    {!isCreatingSchedule ? (
-                        <button onClick={() => setIsCreatingSchedule(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
-                            <Plus className="w-4 h-4" /> Create Schedule
-                        </button>
-                    ) : (
-                        <button onClick={() => setIsCreatingSchedule(false)} className="text-slate-400 hover:text-slate-600">Cancel</button>
-                    )}
+      {activeTab === 'SCHEDULE' && (
+        <div className="panel">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div><h3 style={{ fontSize: 16, fontWeight: 800, margin: 0 }}>Automated Report Schedules</h3><p style={{ fontSize: 13, color: 'var(--muted)', margin: '2px 0 0' }}>Configure reports to run automatically.</p></div>
+            {!isCreatingSchedule
+              ? <button className="btn" onClick={() => setIsCreatingSchedule(true)}><Plus className="w-4 h-4" /> Create Schedule</button>
+              : <button className="btn-ghost" onClick={() => setIsCreatingSchedule(false)}>Cancel</button>}
+          </div>
+
+          {isCreatingSchedule && (
+            <div className="subpanel" style={{ marginBottom: 16 }}>
+              <div className="ph">NEW REPORT SCHEDULE</div>
+              <div className="grid-2">
+                <div>
+                  <div className="field"><label>Report Name</label><input className="input" value={schedName} onChange={e => setSchedName(e.target.value)} placeholder="e.g. Weekly Summary" /></div>
+                  <div className="field"><label>Run Time</label><input className="input" type="time" value={schedTime} onChange={e => setSchedTime(e.target.value)} /></div>
+                  <div className="field" style={{ marginBottom: 0 }}><label>Run Frequency</label>
+                    <select className="input" value={schedFreq} onChange={e => setSchedFreq(e.target.value as any)}>
+                      <option value="DAILY">Daily</option><option value="WEEKLY">Weekly</option><option value="MONTHLY">Monthly</option><option value="CUSTOM">Custom Interval</option>
+                    </select>
+                  </div>
                 </div>
-
-                {isCreatingSchedule && (
-                    <div className="mb-8 bg-slate-50 p-6 rounded-xl border border-slate-200 animate-in slide-in-from-top-2">
-                        <h3 className="font-bold text-slate-700 mb-4">New Report Schedule</h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                            <div className="space-y-4">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase border-b border-slate-200 pb-2">General Info</h4>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Report Name</label>
-                                    <input
-                                        type="text"
-                                        value={schedName}
-                                        onChange={(e) => setSchedName(e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
-                                        placeholder="e.g. Weekly Summary"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Run Time</label>
-                                    <input
-                                        type="time"
-                                        value={schedTime}
-                                        onChange={(e) => setSchedTime(e.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 mb-1">Run Frequency</label>
-                                    <select
-                                        value={schedFreq}
-                                        onChange={(e) => setSchedFreq(e.target.value as any)}
-                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
-                                    >
-                                        <option value="DAILY">Daily</option>
-                                        <option value="WEEKLY">Weekly</option>
-                                        <option value="MONTHLY">Monthly</option>
-                                        <option value="CUSTOM">Custom Interval</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="space-y-4">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase border-b border-slate-200 pb-2">Configuration</h4>
-
-                                {schedFreq === 'DAILY' && (
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-2">Report Data Scope</label>
-                                        <div className="flex gap-4">
-                                            <label className="flex items-center gap-2 cursor-pointer bg-white border border-slate-200 px-3 py-2 rounded-lg flex-1">
-                                                <input type="radio" name="dailyScope" checked={dailyScope === 'TODAY'} onChange={() => setDailyScope('TODAY')} className="bg-white" />
-                                                <span className="text-sm font-medium text-slate-700">Data from Today</span>
-                                            </label>
-                                            <label className="flex items-center gap-2 cursor-pointer bg-white border border-slate-200 px-3 py-2 rounded-lg flex-1">
-                                                <input type="radio" name="dailyScope" checked={dailyScope === 'YESTERDAY'} onChange={() => setDailyScope('YESTERDAY')} className="bg-white" />
-                                                <span className="text-sm font-medium text-slate-700">Data from Yesterday</span>
-                                            </label>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {schedFreq === 'WEEKLY' && (
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-2">Run on Days</label>
-                                            <div className="flex justify-between gap-1 bg-white p-2 rounded-lg border border-slate-200">
-                                                {['S','M','T','W','T','F','S'].map((d, i) => (
-                                                    <button
-                                                        key={i}
-                                                        onClick={() => toggleWeekDay(i)}
-                                                        className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${schedWeekDays.includes(i) ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                                                    >
-                                                        {d}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-800">
-                                            <p className="font-bold flex items-center gap-1"><Info className="w-3 h-3"/> Scope</p>
-                                            <p className="mt-1">Weekly reports cover the full 7-day period ending on the day before the run date.</p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {schedFreq === 'MONTHLY' && (
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">Run on Day</label>
-                                            <select
-                                                value={monthlyRunDay}
-                                                onChange={(e) => setMonthlyRunDay(parseInt(e.target.value))}
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
-                                            >
-                                                {Array.from({length: 31}, (_, i) => i + 1).map(d => (
-                                                    <option key={d} value={d}>{d}{getOrdinal(d)}</option>
-                                                ))}
-                                                <option value={32}>Last Day of Month</option>
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-2">Data Scope</label>
-                                            <div className="space-y-2">
-                                                <label className="flex items-center gap-2 cursor-pointer bg-white border border-slate-200 px-3 py-2 rounded-lg">
-                                                    <input type="radio" name="monthlyScope" checked={monthlyScope === 'CALENDAR_MONTH'} onChange={() => setMonthlyScope('CALENDAR_MONTH')} className="bg-white" />
-                                                    <span className="text-sm font-medium text-slate-700">Previous Calendar Month</span>
-                                                </label>
-
-                                                <label className="flex items-center gap-2 cursor-pointer bg-white border border-slate-200 px-3 py-2 rounded-lg">
-                                                    <input type="radio" name="monthlyScope" checked={monthlyScope === 'ROLLING_DAYS'} onChange={() => setMonthlyScope('ROLLING_DAYS')} className="bg-white" />
-                                                    <span className="text-sm font-medium text-slate-700">Rolling Days (Custom)</span>
-                                                </label>
-
-                                                {monthlyScope === 'ROLLING_DAYS' && (
-                                                    <div className="pl-6">
-                                                        <label className="text-xs text-slate-500 mr-2">Number of days:</label>
-                                                        <input
-                                                            type="number"
-                                                            min="1"
-                                                            max="365"
-                                                            value={monthlyRollingDays}
-                                                            onChange={(e) => setMonthlyRollingDays(parseInt(e.target.value) || 30)}
-                                                            className="w-20 px-2 py-1 border border-slate-300 rounded text-sm bg-white text-black"
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {schedFreq === 'CUSTOM' && (
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">Repeat Every (Days)</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                value={schedCustomInterval}
-                                                onChange={(e) => setSchedCustomInterval(parseInt(e.target.value) || 1)}
-                                                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 mb-1">End Offset</label>
-                                                <input type="number" min="0" value={schedRangeEnd} onChange={e => setSchedRangeEnd(parseInt(e.target.value)||0)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-500 mb-1">Lookback</label>
-                                                <input type="number" min="0" value={schedRangeStart} onChange={e => setSchedRangeStart(parseInt(e.target.value)||0)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white text-black [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
-                             <button onClick={() => setIsCreatingSchedule(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-200 rounded-lg">Cancel</button>
-                             <button onClick={handleCreateSchedule} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-md shadow-blue-500/20">Save Schedule</button>
-                        </div>
+                <div>
+                  {schedFreq === 'DAILY' && (
+                    <div className="field"><label>Report Data Scope</label>
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        {(['TODAY', 'YESTERDAY'] as const).map(s => (
+                          <button key={s} className={'chip' + (dailyScope === s ? ' active' : '')} style={{ flex: 1, justifyContent: 'center' }} onClick={() => setDailyScope(s)}>Data from {s === 'TODAY' ? 'Today' : 'Yesterday'}</button>
+                        ))}
+                      </div>
                     </div>
-                )}
-
-                <div className="grid grid-cols-1 gap-4">
-                    {schedules.map(schedule => (
-                        <div key={schedule.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-blue-300 transition-colors">
-                             <div className="flex items-center gap-4">
-                                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${schedule.active ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
-                                     <ClockIcon className="w-6 h-6" />
-                                 </div>
-                                 <div>
-                                     <h4 className="font-bold text-slate-800">{schedule.name}</h4>
-                                     <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
-                                         <span className="flex items-center gap-1 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                                             <Info className="w-3 h-3" /> {getFriendlyDescription(schedule)}
-                                         </span>
-                                         <span>at {schedule.time}</span>
-                                     </div>
-                                 </div>
-                             </div>
-                             <div className="flex items-center gap-4">
-                                 <span className={`text-xs font-bold px-2 py-1 rounded ${schedule.active ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
-                                     {schedule.active ? 'ACTIVE' : 'PAUSED'}
-                                 </span>
-                                 <button onClick={() => handleDeleteSchedule(schedule.id)} className="text-slate-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg transition-colors">
-                                     <Trash className="w-4 h-4" />
-                                 </button>
-                             </div>
+                  )}
+                  {schedFreq === 'WEEKLY' && (
+                    <>
+                      <div className="field"><label>Run on Days</label>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                            <button key={i} onClick={() => toggleWeekDay(i)} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 800, background: schedWeekDays.includes(i) ? 'var(--accent)' : 'var(--inset)', color: schedWeekDays.includes(i) ? '#fff' : 'var(--muted)' }}>{d}</button>
+                          ))}
                         </div>
-                    ))}
-                    {schedules.length === 0 && !isCreatingSchedule && (
-                        <div className="text-center py-12 border-2 border-dashed border-slate-100 rounded-xl text-slate-400">
-                            No active schedules found.
+                      </div>
+                      <div className="subpanel" style={{ fontSize: 12, color: 'var(--ink2)' }}><span style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}><Info className="w-3 h-3" /> Scope</span><p style={{ margin: '6px 0 0' }}>Weekly reports cover the 7-day period ending the day before the run date.</p></div>
+                    </>
+                  )}
+                  {schedFreq === 'MONTHLY' && (
+                    <>
+                      <div className="field"><label>Run on Day</label>
+                        <select className="input" value={monthlyRunDay} onChange={e => setMonthlyRunDay(parseInt(e.target.value))}>
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map(d => <option key={d} value={d}>{d}{getOrdinal(d)}</option>)}
+                          <option value={32}>Last Day of Month</option>
+                        </select>
+                      </div>
+                      <div className="field" style={{ marginBottom: 0 }}><label>Data Scope</label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {(['CALENDAR_MONTH', 'ROLLING_DAYS'] as const).map(s => (
+                            <button key={s} className={'chip' + (monthlyScope === s ? ' active' : '')} onClick={() => setMonthlyScope(s)}>{s === 'CALENDAR_MONTH' ? 'Previous Calendar Month' : 'Rolling Days (Custom)'}</button>
+                          ))}
+                          {monthlyScope === 'ROLLING_DAYS' && <div><label style={{ fontSize: 12, color: 'var(--muted)', marginRight: 8 }}>Days:</label><input type="number" min="1" max="365" className="input" style={{ width: 90, display: 'inline-block' }} value={monthlyRollingDays} onChange={e => setMonthlyRollingDays(parseInt(e.target.value) || 30)} /></div>}
                         </div>
-                    )}
+                      </div>
+                    </>
+                  )}
+                  {schedFreq === 'CUSTOM' && (
+                    <>
+                      <div className="field"><label>Repeat Every (Days)</label><input type="number" min="1" className="input" value={schedCustomInterval} onChange={e => setSchedCustomInterval(parseInt(e.target.value) || 1)} /></div>
+                      <div className="grid-2">
+                        <div className="field" style={{ marginBottom: 0 }}><label>End Offset</label><input type="number" min="0" className="input" value={schedRangeEnd} onChange={e => setSchedRangeEnd(parseInt(e.target.value) || 0)} /></div>
+                        <div className="field" style={{ marginBottom: 0 }}><label>Lookback</label><input type="number" min="0" className="input" value={schedRangeStart} onChange={e => setSchedRangeStart(parseInt(e.target.value) || 0)} /></div>
+                      </div>
+                    </>
+                  )}
                 </div>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, borderTop: '1px solid var(--line)', paddingTop: 14, marginTop: 14 }}>
+                <button className="btn-g btn" onClick={() => setIsCreatingSchedule(false)}>Cancel</button>
+                <button className="btn" onClick={handleCreateSchedule}>Save Schedule</button>
+              </div>
             </div>
-        )}
+          )}
 
-        {activeTab === 'TRENDS' && (
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                <TemporalMetricsCharts
-                    defaultGranularity="monthly"
-                    defaultMonths={12}
-                />
-            </div>
-        )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {schedules.map(schedule => (
+              <div key={schedule.id} className="subpanel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <span style={{ width: 44, height: 44, borderRadius: 12, display: 'grid', placeItems: 'center', background: schedule.active ? 'var(--green-bg)' : 'var(--inset)', color: schedule.active ? 'var(--green-ink)' : 'var(--faint)' }}><ClockIcon className="w-5 h-5" /></span>
+                  <div>
+                    <h4 style={{ fontSize: 14.5, fontWeight: 800, margin: 0 }}>{schedule.name}</h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>
+                      <span className="chip" style={{ padding: '3px 8px' }}><Info className="w-3 h-3" /> {getFriendlyDescription(schedule)}</span>
+                      <span>at {schedule.time}</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span className={'tag ' + (schedule.active ? 't-done' : 't-todo')}>{schedule.active ? 'Active' : 'Paused'}</span>
+                  <button className="btn-ghost" onClick={() => handleDeleteSchedule(schedule.id)} style={{ color: 'var(--red-ink)' }}><Trash className="w-4 h-4" /></button>
+                </div>
+              </div>
+            ))}
+            {schedules.length === 0 && !isCreatingSchedule && <div className="empty"><span className="ic"><ClockIcon className="w-7 h-7" /></span><h4>No schedules</h4><p>Create a schedule to automate reports.</p></div>}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'TRENDS' && (
+        <div className="panel">
+          <TemporalMetricsCharts defaultGranularity="monthly" defaultMonths={12} />
+        </div>
+      )}
     </div>
   );
 };

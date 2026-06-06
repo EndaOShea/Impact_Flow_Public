@@ -8,6 +8,7 @@ import {
 import { Project, ProjectStatus, Priority, TeamMember, Attachment, Comment, User } from '../types';
 import { api } from '../services/api';
 import { validateFile, validateAttachmentCount } from '../services/fileValidation';
+import { projectStatusLabel } from '../lib/display';
 
 interface ProjectModalProps {
     isOpen: boolean;
@@ -28,6 +29,12 @@ const toDateString = (date?: Date | string) => {
     } catch (e) {
         return '';
     }
+};
+
+const codeFor = (name: string) => {
+    const t = (name || '').trim();
+    if (!t) return 'NP';
+    return t.slice(0, 3).toUpperCase();
 };
 
 export const ProjectModal: React.FC<ProjectModalProps> = ({
@@ -310,191 +317,182 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
     if (!isOpen) return null;
 
+    const tabLabel = (tab: ModalTab) =>
+        tab === 'COLLAB' ? 'Collaboration' : tab.charAt(0) + tab.slice(1).toLowerCase();
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col border border-slate-200">
+        <div
+            className="overlay"
+            onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        >
+            <div className="modal" style={{ width: 'min(94vw, 920px)', height: 'min(88vh, 720px)' }}>
 
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-100 bg-white z-10">
-                    <div className="flex justify-between items-start mb-4">
-                        <input
-                            type="text"
-                            value={title}
-                            onChange={(e) => setTitle(e.target.value)}
-                            className="text-2xl font-bold bg-transparent border-none focus:ring-0 p-0 text-slate-900 w-full outline-none"
-                            placeholder="Project Title"
-                            autoFocus
-                        />
-                        <button
-                            onClick={onClose}
-                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors ml-4"
-                        >
-                            <X className="w-5 h-5 text-slate-400" />
-                        </button>
-                    </div>
+                <div className="modal-h">
+                    <span
+                        className="proj-badge"
+                        style={{ ['--pc' as any]: color, width: 36, height: 36, borderRadius: 11, fontSize: 13 }}
+                    >
+                        {codeFor(title)}
+                    </span>
+                    <input
+                        className="modal-title"
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Project name…"
+                        autoFocus
+                    />
+                    <button className="icon-btn" onClick={onClose} title="Close">
+                        <X size={18} />
+                    </button>
+                </div>
 
-                    {/* Tabs */}
-                    <div className="flex gap-2 overflow-x-auto">
-                        {(['DETAILS', 'STRATEGY', 'TEAM', 'COLLAB', 'ANALYTICS'] as ModalTab[]).map(tab => (
-                            <button
-                                key={tab}
-                                onClick={() => setActiveTab(tab)}
-                                className={`px-4 py-2 text-sm font-bold rounded-lg transition-colors whitespace-nowrap ${
-                                    activeTab === tab
-                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
-                                        : 'text-slate-500 hover:bg-slate-100'
-                                }`}
-                            >
-                                {tab === 'COLLAB' ? 'Collaboration' : tab.charAt(0) + tab.slice(1).toLowerCase()}
-                            </button>
-                        ))}
-                    </div>
+                {/* Tabs */}
+                <div className="modal-tabs">
+                    {(['DETAILS', 'STRATEGY', 'TEAM', 'COLLAB', 'ANALYTICS'] as ModalTab[]).map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={'modal-tab' + (activeTab === tab ? ' on' : '')}
+                        >
+                            {tabLabel(tab)}
+                        </button>
+                    ))}
                 </div>
 
                 {/* Content */}
-                <div className="overflow-y-auto bg-slate-50/50 h-[650px]">
+                <div className="modal-body">
 
                     {/* TAB: DETAILS */}
                     {activeTab === 'DETAILS' && (
-                        <div className="p-8 max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 22 }}>
                             {/* Left Column: Main Content */}
-                            <div className="lg:col-span-2 space-y-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                            <div>
+                                <div className="field">
+                                    <label>Description</label>
                                     <textarea
+                                        className="textarea"
                                         value={description}
                                         onChange={(e) => setDescription(e.target.value)}
-                                        className="w-full px-4 py-3 bg-white text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all h-32 resize-none shadow-sm"
                                         placeholder="Detailed description of the project..."
                                     />
                                 </div>
 
                                 {/* Project Info Card */}
-                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                        <Briefcase className="w-4 h-4" /> Project Information
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div className="subpanel">
+                                    <div className="ph"><Briefcase size={13} /> PROJECT INFORMATION</div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px', fontSize: 13.5 }}>
                                         <div>
-                                            <span className="text-slate-500">Status:</span>
-                                            <span className="ml-2 font-medium text-slate-900">{status}</span>
+                                            <div style={{ color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>Status</div>
+                                            <b>{projectStatusLabel(status)}</b>
                                         </div>
                                         <div>
-                                            <span className="text-slate-500">Priority:</span>
-                                            <span className="ml-2 font-medium text-slate-900">{priority}</span>
+                                            <div style={{ color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>Priority</div>
+                                            <b>{priority}</b>
                                         </div>
                                         <div>
-                                            <span className="text-slate-500">Start Date:</span>
-                                            <span className="ml-2 font-medium text-slate-900">
-                                                {startDate ? new Date(startDate).toLocaleDateString('en-GB') : 'Not set'}
-                                            </span>
+                                            <div style={{ color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>Start date</div>
+                                            <b>{startDate ? new Date(startDate).toLocaleDateString('en-GB') : 'Not set'}</b>
                                         </div>
                                         <div>
-                                            <span className="text-slate-500">Target End:</span>
-                                            <span className="ml-2 font-medium text-slate-900">
-                                                {targetEndDate ? new Date(targetEndDate).toLocaleDateString('en-GB') : 'Not set'}
-                                            </span>
+                                            <div style={{ color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>Target end</div>
+                                            <b>{targetEndDate ? new Date(targetEndDate).toLocaleDateString('en-GB') : 'Not set'}</b>
                                         </div>
+                                    </div>
+                                </div>
+
+                                <div className="subpanel" style={{ marginTop: 16 }}>
+                                    <div className="ph">CALENDAR COLOR</div>
+                                    <div className="swatches">
+                                        {[
+                                            { name: 'Purple', value: '#8b5cf6' },
+                                            { name: 'Blue', value: '#3b82f6' },
+                                            { name: 'Green', value: '#10b981' },
+                                            { name: 'Orange', value: '#f59e0b' },
+                                            { name: 'Red', value: '#ef4444' },
+                                            { name: 'Pink', value: '#ec4899' },
+                                            { name: 'Teal', value: '#14b8a6' },
+                                            { name: 'Indigo', value: '#6366f1' },
+                                            { name: 'Yellow', value: '#fbbf24' },
+                                            { name: 'Brown', value: '#a16207' }
+                                        ].map(c => (
+                                            <div
+                                                key={c.value}
+                                                className={'swatch' + (color === c.value ? ' on' : '')}
+                                                style={{ background: c.value }}
+                                                onClick={() => setColor(c.value)}
+                                                title={c.name}
+                                            />
+                                        ))}
                                     </div>
                                 </div>
                             </div>
 
                             {/* Right Column: Settings */}
-                            <div className="space-y-6">
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                                 {/* Status & Priority */}
-                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-                                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Classification</h3>
-
-                                    <div>
-                                        <label className="text-xs font-medium text-slate-600 mb-1 block">Status</label>
+                                <div className="subpanel">
+                                    <div className="ph">CLASSIFICATION</div>
+                                    <div className="field">
+                                        <label>Status</label>
                                         <select
+                                            className="input"
                                             value={status}
                                             onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-                                            className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                                         >
                                             {Object.values(ProjectStatus).map(s => (
-                                                <option key={s} value={s}>{s}</option>
+                                                <option key={s} value={s}>{projectStatusLabel(s)}</option>
                                             ))}
                                         </select>
                                     </div>
 
-                                    <div>
-                                        <label className="text-xs font-medium text-slate-600 mb-1 block">Priority</label>
+                                    <div className="field" style={{ marginBottom: 0 }}>
+                                        <label>Priority</label>
                                         <select
+                                            className="input"
                                             value={priority}
                                             onChange={(e) => setPriority(e.target.value as Priority)}
-                                            className="w-full text-sm border border-slate-300 rounded-lg bg-white px-3 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
                                         >
                                             {Object.values(Priority).map(p => (
                                                 <option key={p} value={p}>{p}</option>
                                             ))}
                                         </select>
                                     </div>
-
-                                    <div>
-                                        <label className="text-xs font-medium text-slate-600 mb-1 block">Calendar Color</label>
-                                        <div className="flex gap-2 flex-wrap">
-                                            {[
-                                                { name: 'Purple', value: '#8b5cf6' },
-                                                { name: 'Blue', value: '#3b82f6' },
-                                                { name: 'Green', value: '#10b981' },
-                                                { name: 'Orange', value: '#f59e0b' },
-                                                { name: 'Red', value: '#ef4444' },
-                                                { name: 'Pink', value: '#ec4899' },
-                                                { name: 'Teal', value: '#14b8a6' },
-                                                { name: 'Indigo', value: '#6366f1' },
-                                                { name: 'Yellow', value: '#fbbf24' },
-                                                { name: 'Brown', value: '#a16207' }
-                                            ].map(c => (
-                                                <button
-                                                    key={c.value}
-                                                    type="button"
-                                                    onClick={() => setColor(c.value)}
-                                                    className={`w-8 h-8 rounded-lg border-2 transition-all ${
-                                                        color === c.value ? 'border-slate-800 scale-110' : 'border-slate-300 hover:scale-105'
-                                                    }`}
-                                                    style={{ backgroundColor: c.value }}
-                                                    title={c.name}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
                                 </div>
 
                                 {/* Dates */}
-                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-                                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Timeline</h3>
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="text-xs font-medium text-slate-600 mb-1 block">Start Date</label>
-                                            <input
-                                                type="date"
-                                                value={startDate}
-                                                onChange={(e) => setStartDate(e.target.value)}
-                                                className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-medium text-slate-600 mb-1 block">Target End Date</label>
-                                            <input
-                                                type="date"
-                                                value={targetEndDate}
-                                                onChange={(e) => setTargetEndDate(e.target.value)}
-                                                className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
-                                            />
-                                        </div>
-                                        {status === ProjectStatus.COMPLETED && (
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-600 mb-1 block">Actual End Date</label>
-                                                <input
-                                                    type="date"
-                                                    value={actualEndDate}
-                                                    onChange={(e) => setActualEndDate(e.target.value)}
-                                                    className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
-                                                />
-                                            </div>
-                                        )}
+                                <div className="subpanel">
+                                    <div className="ph">TIMELINE</div>
+                                    <div className="field">
+                                        <label>Start date</label>
+                                        <input
+                                            className="input"
+                                            type="date"
+                                            value={startDate}
+                                            onChange={(e) => setStartDate(e.target.value)}
+                                        />
                                     </div>
+                                    <div className="field" style={{ marginBottom: status === ProjectStatus.COMPLETED ? 16 : 0 }}>
+                                        <label>Target end date</label>
+                                        <input
+                                            className="input"
+                                            type="date"
+                                            value={targetEndDate}
+                                            onChange={(e) => setTargetEndDate(e.target.value)}
+                                        />
+                                    </div>
+                                    {status === ProjectStatus.COMPLETED && (
+                                        <div className="field" style={{ marginBottom: 0 }}>
+                                            <label>Actual end date</label>
+                                            <input
+                                                className="input"
+                                                type="date"
+                                                value={actualEndDate}
+                                                onChange={(e) => setActualEndDate(e.target.value)}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -502,82 +500,79 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
                     {/* TAB: STRATEGY */}
                     {activeTab === 'STRATEGY' && (
-                        <div className="p-8 max-w-4xl mx-auto space-y-6">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                             {/* Vision */}
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <Target className="w-4 h-4 text-purple-500" /> Vision
-                                </h3>
+                            <div className="subpanel">
+                                <div className="ph"><Target size={13} /> VISION</div>
                                 <textarea
+                                    className="textarea"
                                     value={vision}
                                     onChange={(e) => setVision(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 text-slate-900 border border-slate-200 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none transition-all h-24 resize-none"
                                     placeholder="What is the long-term vision for this project?"
                                 />
                             </div>
 
                             {/* Success Criteria */}
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <CheckCircle2 className="w-4 h-4 text-green-500" /> Success Criteria
-                                </h3>
+                            <div className="subpanel">
+                                <div className="ph"><CheckCircle2 size={13} /> SUCCESS CRITERIA</div>
                                 <textarea
+                                    className="textarea"
                                     value={successCriteria}
                                     onChange={(e) => setSuccessCriteria(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 text-slate-900 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none transition-all h-24 resize-none"
                                     placeholder="How will success be measured? What are the key outcomes?"
                                 />
                             </div>
 
                             {/* OKRs */}
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <Flag className="w-4 h-4 text-blue-500" /> Objectives & Key Results
-                                </h3>
-                                <div className="space-y-2 mb-4">
+                            <div className="subpanel">
+                                <div className="ph"><Flag size={13} /> OBJECTIVES &amp; KEY RESULTS</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
                                     {okrs.map((okr, index) => (
-                                        <div key={index} className="flex items-center gap-2 bg-slate-50 p-3 rounded-lg">
-                                            <span className="text-sm text-slate-700 flex-1">{okr}</span>
+                                        <div
+                                            key={index}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: 10,
+                                                background: 'var(--inset)', padding: '11px 13px', borderRadius: 'var(--radius-sm)'
+                                            }}
+                                        >
+                                            <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: 'var(--ink2)' }}>{okr}</span>
                                             <button
+                                                className="icon-btn"
+                                                style={{ width: 30, height: 30 }}
                                                 onClick={() => handleDeleteOkr(index)}
-                                                className="text-slate-400 hover:text-red-500 transition-colors"
+                                                title="Remove"
                                             >
-                                                <Trash className="w-4 h-4" />
+                                                <Trash size={14} />
                                             </button>
                                         </div>
                                     ))}
                                     {okrs.length === 0 && (
-                                        <p className="text-slate-400 text-sm italic">No OKRs defined yet.</p>
+                                        <p style={{ color: 'var(--faint)', fontSize: 13, fontStyle: 'italic' }}>No OKRs defined yet.</p>
                                     )}
                                 </div>
-                                <div className="flex gap-2">
+                                <div style={{ display: 'flex', gap: 10 }}>
                                     <input
+                                        className="input"
                                         type="text"
                                         value={newOkrInput}
                                         onChange={(e) => setNewOkrInput(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleAddOkr()}
                                         placeholder="Add an objective or key result..."
-                                        className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                                     />
-                                    <button
-                                        onClick={handleAddOkr}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
-                                    >
-                                        Add
+                                    <button className="btn" onClick={handleAddOkr}>
+                                        <Plus size={15} /> Add
                                     </button>
                                 </div>
                             </div>
 
                             {/* Notes */}
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <MessageSquare className="w-4 h-4 text-slate-500" /> Notes
-                                </h3>
+                            <div className="subpanel">
+                                <div className="ph"><MessageSquare size={13} /> NOTES</div>
                                 <textarea
+                                    className="textarea"
                                     value={notes}
                                     onChange={(e) => setNotes(e.target.value)}
-                                    className="w-full px-4 py-3 bg-slate-50 text-slate-900 border border-slate-200 rounded-lg focus:ring-2 focus:ring-slate-500 outline-none transition-all h-32 resize-none"
                                     placeholder="Additional notes, considerations, or context..."
                                 />
                             </div>
@@ -586,135 +581,141 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
                     {/* TAB: TEAM */}
                     {activeTab === 'TEAM' && (
-                        <div className="p-8 max-w-4xl mx-auto space-y-6">
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                        <Users className="w-4 h-4 text-blue-500" /> Team Members
+                        <div className="subpanel">
+                            <div className="card-h" style={{ marginBottom: 14 }}>
+                                <div>
+                                    <h3 style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 15 }}>
+                                        <Users size={16} /> Team Members
                                     </h3>
-                                    <button
-                                        onClick={handleAddTeamMember}
-                                        className="text-blue-600 text-xs font-bold hover:underline bg-blue-50 px-3 py-1.5 rounded-full flex items-center gap-1"
-                                    >
-                                        <Plus className="w-3 h-3" /> Add Member
-                                    </button>
                                 </div>
+                                <button className="btn-g btn" onClick={handleAddTeamMember}>
+                                    <Plus size={15} /> Add Member
+                                </button>
+                            </div>
 
-                                <div className="space-y-2">
-                                    {teamMembers.length === 0 && (
-                                        <p className="text-slate-400 text-sm italic text-center py-8">No team members added yet.</p>
-                                    )}
-                                    {teamMembers.map(member => {
-                                        const isExpanded = expandedMemberIds.has(member.id);
-                                        return (
-                                            <div key={member.id} className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
-                                                {/* Collapsed Header - Always Visible */}
-                                                <div
-                                                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-slate-100 transition-colors"
-                                                    onClick={() => toggleMemberExpanded(member.id)}
-                                                >
-                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold flex-shrink-0">
-                                                            {member.name ? member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?'}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {teamMembers.length === 0 && (
+                                    <p style={{ color: 'var(--faint)', fontSize: 13, fontStyle: 'italic', textAlign: 'center', padding: '32px 0' }}>
+                                        No team members added yet.
+                                    </p>
+                                )}
+                                {teamMembers.map(member => {
+                                    const isExpanded = expandedMemberIds.has(member.id);
+                                    return (
+                                        <div
+                                            key={member.id}
+                                            style={{ background: 'var(--inset)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)', overflow: 'hidden' }}
+                                        >
+                                            {/* Collapsed Header - Always Visible */}
+                                            <div
+                                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 13px', cursor: 'pointer' }}
+                                                onClick={() => toggleMemberExpanded(member.id)}
+                                            >
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 11, flex: 1, minWidth: 0 }}>
+                                                    <span className="ava">
+                                                        {member.name ? member.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : '?'}
+                                                    </span>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                            {member.name || <span style={{ color: 'var(--faint)', fontStyle: 'italic' }}>Unnamed</span>}
                                                         </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="font-medium text-slate-800 truncate">
-                                                                {member.name || <span className="text-slate-400 italic">Unnamed</span>}
-                                                            </div>
-                                                            {member.role && (
-                                                                <div className="text-xs text-slate-500 truncate">{member.role}</div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); handleDeleteTeamMember(member.id); }}
-                                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                                                            title="Remove member"
-                                                        >
-                                                            <Trash className="w-4 h-4" />
-                                                        </button>
-                                                        {isExpanded ? (
-                                                            <ChevronDown className="w-5 h-5 text-slate-400" />
-                                                        ) : (
-                                                            <ChevronRight className="w-5 h-5 text-slate-400" />
+                                                        {member.role && (
+                                                            <div style={{ fontSize: 12, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.role}</div>
                                                         )}
                                                     </div>
                                                 </div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    <button
+                                                        className="icon-btn"
+                                                        style={{ width: 30, height: 30 }}
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteTeamMember(member.id); }}
+                                                        title="Remove member"
+                                                    >
+                                                        <Trash size={14} />
+                                                    </button>
+                                                    {isExpanded
+                                                        ? <ChevronDown size={18} style={{ color: 'var(--muted)' }} />
+                                                        : <ChevronRight size={18} style={{ color: 'var(--muted)' }} />}
+                                                </div>
+                                            </div>
 
-                                                {/* Expanded Details */}
-                                                {isExpanded && (
-                                                    <div className="p-4 pt-0 space-y-3 border-t border-slate-200 bg-white">
-                                                        <div className="grid grid-cols-2 gap-3 pt-3">
-                                                            <div>
-                                                                <label className="text-xs font-medium text-slate-600 mb-1 block">Name *</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={member.name}
-                                                                    onChange={(e) => handleUpdateTeamMember(member.id, { name: e.target.value })}
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                    className="w-full text-sm border border-slate-300 rounded px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                                                    placeholder="Full name"
-                                                                />
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-xs font-medium text-slate-600 mb-1 block">Role</label>
-                                                                <input
-                                                                    type="text"
-                                                                    value={member.role || ''}
-                                                                    onChange={(e) => handleUpdateTeamMember(member.id, { role: e.target.value })}
-                                                                    onClick={(e) => e.stopPropagation()}
-                                                                    className="w-full text-sm border border-slate-300 rounded px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                                                    placeholder="e.g., Designer, Developer"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-xs font-medium text-slate-600 mb-1 block">Email</label>
+                                            {/* Expanded Details */}
+                                            {isExpanded && (
+                                                <div style={{ padding: '14px 13px', borderTop: '1px solid var(--line)', background: 'var(--panel)' }}>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                                                        <div className="field" style={{ marginBottom: 0 }}>
+                                                            <label>Name *</label>
                                                             <input
-                                                                type="email"
-                                                                value={member.email || ''}
-                                                                onChange={(e) => handleUpdateTeamMember(member.id, { email: e.target.value })}
+                                                                className="input"
+                                                                type="text"
+                                                                value={member.name}
+                                                                onChange={(e) => handleUpdateTeamMember(member.id, { name: e.target.value })}
                                                                 onClick={(e) => e.stopPropagation()}
-                                                                className="w-full text-sm border border-slate-300 rounded px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
-                                                                placeholder="email@example.com"
+                                                                placeholder="Full name"
                                                             />
                                                         </div>
-                                                        <div>
-                                                            <label className="text-xs font-medium text-slate-600 mb-1 block">Notes</label>
-                                                            <textarea
-                                                                value={member.notes || ''}
-                                                                onChange={(e) => handleUpdateTeamMember(member.id, { notes: e.target.value })}
+                                                        <div className="field" style={{ marginBottom: 0 }}>
+                                                            <label>Role</label>
+                                                            <input
+                                                                className="input"
+                                                                type="text"
+                                                                value={member.role || ''}
+                                                                onChange={(e) => handleUpdateTeamMember(member.id, { role: e.target.value })}
                                                                 onClick={(e) => e.stopPropagation()}
-                                                                className="w-full text-sm border border-slate-300 rounded px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none resize-none h-20"
-                                                                placeholder="Additional information about this team member..."
+                                                                placeholder="e.g., Designer, Developer"
                                                             />
                                                         </div>
                                                     </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                                                    <div className="field" style={{ marginTop: 14, marginBottom: 0 }}>
+                                                        <label>Email</label>
+                                                        <input
+                                                            className="input"
+                                                            type="email"
+                                                            value={member.email || ''}
+                                                            onChange={(e) => handleUpdateTeamMember(member.id, { email: e.target.value })}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            placeholder="email@example.com"
+                                                        />
+                                                    </div>
+                                                    <div className="field" style={{ marginTop: 14, marginBottom: 0 }}>
+                                                        <label>Notes</label>
+                                                        <textarea
+                                                            className="textarea"
+                                                            style={{ minHeight: 80 }}
+                                                            value={member.notes || ''}
+                                                            onChange={(e) => handleUpdateTeamMember(member.id, { notes: e.target.value })}
+                                                            onClick={(e) => e.stopPropagation()}
+                                                            placeholder="Additional information about this team member..."
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
 
                     {/* TAB: COLLAB */}
                     {activeTab === 'COLLAB' && (
-                        <div className="p-8 max-w-4xl mx-auto space-y-6">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                             {/* Attachments */}
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <Paperclip className="w-4 h-4" /> Attachments
-                                    <span className="text-xs font-normal text-slate-400">({attachments.length}/3)</span>
-                                </h3>
+                            <div className="subpanel">
+                                <div className="ph">
+                                    <Paperclip size={13} /> ATTACHMENTS
+                                    <span style={{ color: 'var(--muted)', fontWeight: 700, marginLeft: 6 }}>({attachments.length}/3)</span>
+                                </div>
 
                                 {attachmentError && (
-                                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-                                        <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                                        <span className="text-xs text-red-700">{attachmentError}</span>
+                                    <div style={{
+                                        marginBottom: 14, padding: 11, background: 'var(--red-bg)',
+                                        border: '1px solid color-mix(in srgb, var(--red) 30%, transparent)', borderRadius: 'var(--radius-sm)',
+                                        display: 'flex', alignItems: 'flex-start', gap: 8
+                                    }}>
+                                        <AlertCircle size={15} style={{ color: 'var(--red)', flex: '0 0 auto', marginTop: 1 }} />
+                                        <span style={{ fontSize: 12.5, color: 'var(--red-ink)', fontWeight: 600 }}>{attachmentError}</span>
                                     </div>
                                 )}
 
@@ -722,44 +723,53 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                                     ref={fileInputRef}
                                     type="file"
                                     onChange={handleFileUpload}
-                                    className="hidden"
+                                    style={{ display: 'none' }}
                                     disabled={attachments.length >= 3}
                                 />
                                 <button
+                                    className="btn-g btn"
+                                    style={{ marginBottom: 14 }}
                                     onClick={() => fileInputRef.current?.click()}
                                     disabled={attachments.length >= 3}
-                                    className={`mb-4 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                                        attachments.length >= 3
-                                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                            : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                                    }`}
                                 >
-                                    <Upload className="w-4 h-4" /> Upload File
+                                    <Upload size={15} /> Upload File
                                 </button>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    {attachments.length === 0 && <p className="text-slate-400 text-xs italic col-span-2">No files attached.</p>}
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                                    {attachments.length === 0 && (
+                                        <p style={{ gridColumn: '1 / -1', color: 'var(--faint)', fontSize: 12.5, fontStyle: 'italic' }}>No files attached.</p>
+                                    )}
                                     {attachments.map(file => (
-                                        <div key={file.id} className="flex items-center p-2 bg-slate-50 border border-slate-200 rounded-lg group hover:bg-slate-100 transition-colors">
-                                            <div className="p-1.5 bg-white rounded mr-2"><Paperclip className="w-4 h-4 text-slate-500" /></div>
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className="text-xs font-medium truncate">{file.name}</h4>
-                                                <p className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                                        <div
+                                            key={file.id}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', padding: 9,
+                                                background: 'var(--inset)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)'
+                                            }}
+                                        >
+                                            <div style={{ padding: 6, background: 'var(--panel)', borderRadius: 7, marginRight: 9, display: 'grid', placeItems: 'center' }}>
+                                                <Paperclip size={15} style={{ color: 'var(--muted)' }} />
                                             </div>
-                                            <div className="flex items-center gap-1">
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <h4 style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', margin: 0 }}>{file.name}</h4>
+                                                <p style={{ fontSize: 11.5, color: 'var(--faint)', margin: 0 }}>{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                                 <button
+                                                    className="icon-btn"
+                                                    style={{ width: 28, height: 28 }}
                                                     onClick={() => handleDownloadAttachment(file)}
-                                                    className="p-1 text-slate-400 hover:text-blue-600 transition-colors"
                                                     title="Download file"
                                                 >
-                                                    <Download className="w-3.5 h-3.5" />
+                                                    <Download size={14} />
                                                 </button>
                                                 <button
+                                                    className="icon-btn"
+                                                    style={{ width: 28, height: 28 }}
                                                     onClick={() => handleDeleteAttachment(file.id)}
-                                                    className="p-1 text-slate-400 hover:text-red-500 transition-colors"
                                                     title="Delete file"
                                                 >
-                                                    <Trash className="w-3.5 h-3.5" />
+                                                    <Trash size={14} />
                                                 </button>
                                             </div>
                                         </div>
@@ -768,15 +778,13 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                             </div>
 
                             {/* Resource Links */}
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <LinkIcon className="w-4 h-4" /> Resource Links
-                                </h3>
-                                <div className="space-y-2">
+                            <div className="subpanel">
+                                <div className="ph"><LinkIcon size={13} /> RESOURCE LINKS</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                     {resourceLinks.map((link, idx) => (
-                                        <div key={idx} className="flex gap-2 items-center">
+                                        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                             <input
-                                                className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                                className="input"
                                                 value={link.title}
                                                 onChange={(e) => {
                                                     const newLinks = [...resourceLinks];
@@ -786,7 +794,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                                                 placeholder="Resource Title"
                                             />
                                             <input
-                                                className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                                                className="input"
                                                 value={link.url}
                                                 onChange={(e) => {
                                                     const newLinks = [...resourceLinks];
@@ -800,68 +808,66 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                                                     href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                                    className="icon-btn"
+                                                    style={{ width: 38, height: 38, flex: '0 0 auto' }}
                                                     title="Open in new tab"
                                                 >
-                                                    <ExternalLink className="w-4 h-4" />
+                                                    <ExternalLink size={15} />
                                                 </a>
                                             )}
                                             <button
+                                                className="icon-btn"
+                                                style={{ flex: '0 0 auto' }}
                                                 onClick={() => setResourceLinks(resourceLinks.filter((_, i) => i !== idx))}
-                                                className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
                                                 title="Remove link"
                                             >
-                                                <Trash className="w-4 h-4"/>
+                                                <Trash size={15} />
                                             </button>
                                         </div>
                                     ))}
                                     <button
+                                        className="btn-ghost btn"
+                                        style={{ alignSelf: 'flex-start' }}
                                         onClick={() => setResourceLinks([...resourceLinks, {title: '', url: ''}])}
-                                        className="text-sm text-blue-600 hover:underline flex items-center gap-1"
                                     >
-                                        <Plus className="w-3 h-3" /> Add Link
+                                        <Plus size={14} /> Add Link
                                     </button>
                                 </div>
                             </div>
 
                             {/* Comments */}
-                            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <MessageSquare className="w-4 h-4" /> Comments
-                                </h3>
-                                <div className="space-y-4 mb-6 max-h-[300px] overflow-y-auto">
-                                    {comments.length === 0 && <p className="text-slate-400 text-sm italic">No comments yet.</p>}
+                            <div className="subpanel">
+                                <div className="ph"><MessageSquare size={13} /> COMMENTS</div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16, maxHeight: 300, overflowY: 'auto' }}>
+                                    {comments.length === 0 && (
+                                        <p style={{ color: 'var(--faint)', fontSize: 13, fontStyle: 'italic' }}>No comments yet.</p>
+                                    )}
                                     {comments.map(c => (
-                                        <div key={c.id} className="flex gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold flex-shrink-0">
-                                                {currentUser.avatarInitials}
-                                            </div>
-                                            <div className="flex-1">
-                                                <div className="bg-slate-50 p-3 rounded-lg rounded-tl-none border border-slate-100">
-                                                    <div className="flex justify-between items-center mb-1">
-                                                        <span className="text-xs font-bold text-slate-700">{currentUser.name}</span>
-                                                        <span className="text-[10px] text-slate-400">{new Date(c.createdAt).toLocaleString()}</span>
+                                        <div key={c.id} style={{ display: 'flex', gap: 11 }}>
+                                            <span className="ava">{currentUser.avatarInitials}</span>
+                                            <div style={{ flex: 1 }}>
+                                                <div style={{ background: 'var(--inset)', padding: 11, borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                                        <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--ink)' }}>{currentUser.name}</span>
+                                                        <span style={{ fontSize: 10.5, color: 'var(--faint)', fontWeight: 600 }}>{new Date(c.createdAt).toLocaleString()}</span>
                                                     </div>
-                                                    <p className="text-sm text-slate-600">{c.text}</p>
+                                                    <p style={{ fontSize: 13.5, color: 'var(--ink2)', margin: 0 }}>{c.text}</p>
                                                 </div>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="flex gap-2">
+                                <div style={{ display: 'flex', gap: 10 }}>
                                     <input
+                                        className="input"
                                         type="text"
                                         value={newCommentText}
                                         onChange={(e) => setNewCommentText(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
                                         placeholder="Add a comment..."
-                                        className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
                                     />
-                                    <button
-                                        onClick={handleAddComment}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                                    >
-                                        Add
+                                    <button className="btn" onClick={handleAddComment}>
+                                        <MessageSquare size={15} /> Add
                                     </button>
                                 </div>
                             </div>
@@ -870,117 +876,114 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
                     {/* TAB: ANALYTICS */}
                     {activeTab === 'ANALYTICS' && (
-                        <div className="p-8 max-w-4xl mx-auto space-y-6">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                             {!projectToEdit ? (
-                                <div className="bg-white p-12 rounded-xl border border-slate-200 shadow-sm text-center">
-                                    <BarChart2 className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                                    <p className="text-slate-500">Analytics will be available after saving the project and adding tasks.</p>
+                                <div className="subpanel" style={{ textAlign: 'center', padding: '48px 20px' }}>
+                                    <BarChart2 size={48} style={{ color: 'var(--faint)', margin: '0 auto 16px' }} />
+                                    <p style={{ color: 'var(--muted)' }}>Analytics will be available after saving the project and adding tasks.</p>
                                 </div>
                             ) : loadingAnalytics ? (
-                                <div className="bg-white p-12 rounded-xl border border-slate-200 shadow-sm text-center">
-                                    <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                                    <p className="text-slate-500">Loading analytics...</p>
+                                <div className="subpanel" style={{ textAlign: 'center', padding: '48px 20px' }}>
+                                    <div
+                                        style={{
+                                            width: 32, height: 32, borderRadius: '50%', margin: '0 auto 16px',
+                                            border: '4px solid var(--accent-soft)', borderTopColor: 'var(--accent)',
+                                            animation: 'spin 0.8s linear infinite'
+                                        }}
+                                    />
+                                    <p style={{ color: 'var(--muted)' }}>Loading analytics...</p>
                                 </div>
                             ) : analytics ? (
                                 <>
                                     {/* Task Summary */}
-                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                        <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                            <TrendingUp className="w-4 h-4 text-blue-500" /> Task Summary
-                                        </h3>
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-slate-900">{analytics.taskSummary.totalTasks}</div>
-                                                <div className="text-xs text-slate-500">Total Tasks</div>
+                                    <div className="subpanel">
+                                        <div className="ph"><TrendingUp size={13} /> TASK SUMMARY</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16 }}>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--ink)' }}>{analytics.taskSummary.totalTasks}</div>
+                                                <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>Total Tasks</div>
                                             </div>
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-green-600">{analytics.taskSummary.completedTasks}</div>
-                                                <div className="text-xs text-slate-500">Completed</div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--green-ink)' }}>{analytics.taskSummary.completedTasks}</div>
+                                                <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>Completed</div>
                                             </div>
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-blue-600">{analytics.taskSummary.inProgressTasks}</div>
-                                                <div className="text-xs text-slate-500">In Progress</div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent)' }}>{analytics.taskSummary.inProgressTasks}</div>
+                                                <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>In Progress</div>
                                             </div>
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-orange-600">{analytics.taskSummary.overdueTasks}</div>
-                                                <div className="text-xs text-slate-500">Overdue</div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--amber-ink)' }}>{analytics.taskSummary.overdueTasks}</div>
+                                                <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>Overdue</div>
                                             </div>
                                         </div>
-                                        <div className="mt-4 p-3 bg-slate-50 rounded-lg">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm font-medium text-slate-700">Progress</span>
-                                                <span className="text-sm font-bold text-blue-600">{analytics.taskSummary.progressPercentage}%</span>
+                                        <div style={{ marginTop: 16, padding: 11, background: 'var(--inset)', borderRadius: 'var(--radius-sm)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--ink2)' }}>Progress</span>
+                                                <span className="num" style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent)' }}>{analytics.taskSummary.progressPercentage}%</span>
                                             </div>
-                                            <div className="mt-2 h-2 bg-slate-200 rounded-full overflow-hidden">
-                                                <div
-                                                    className="h-full bg-blue-600 rounded-full transition-all"
-                                                    style={{ width: `${analytics.taskSummary.progressPercentage}%` }}
-                                                />
+                                            <div className="bar">
+                                                <i style={{ width: `${analytics.taskSummary.progressPercentage}%`, background: 'var(--accent)' }} />
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Time Tracking */}
-                                    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                        <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                            <Clock className="w-4 h-4 text-purple-500" /> Time Tracking
-                                        </h3>
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-slate-900">{analytics.timeTracking.totalEstimatedHours.toFixed(1)}h</div>
-                                                <div className="text-xs text-slate-500">Estimated</div>
+                                    <div className="subpanel">
+                                        <div className="ph"><Clock size={13} /> TIME TRACKING</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16 }}>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--ink)' }}>{analytics.timeTracking.totalEstimatedHours.toFixed(1)}h</div>
+                                                <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>Estimated</div>
                                             </div>
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-blue-600">{analytics.timeTracking.totalHoursSpent.toFixed(1)}h</div>
-                                                <div className="text-xs text-slate-500">Spent</div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--accent)' }}>{analytics.timeTracking.totalHoursSpent.toFixed(1)}h</div>
+                                                <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>Spent</div>
                                             </div>
-                                            <div className="text-center">
-                                                <div className="text-2xl font-bold text-purple-600">{analytics.timeTracking.hoursRemaining.toFixed(1)}h</div>
-                                                <div className="text-xs text-slate-500">Remaining</div>
+                                            <div style={{ textAlign: 'center' }}>
+                                                <div className="num" style={{ fontSize: 24, fontWeight: 800, color: '#8b5cf6' }}>{analytics.timeTracking.hoursRemaining.toFixed(1)}h</div>
+                                                <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>Remaining</div>
                                             </div>
                                         </div>
                                     </div>
 
                                     {/* Impact Metrics */}
                                     {analytics.aggregatedImpact && Object.keys(analytics.aggregatedImpact).length > 0 && (
-                                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                            <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                                <BarChart2 className="w-4 h-4 text-green-500" /> Aggregated Impact
-                                            </h3>
-                                            <div className="grid grid-cols-2 gap-4">
+                                        <div className="subpanel">
+                                            <div className="ph"><BarChart2 size={13} /> AGGREGATED IMPACT</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                                                 {analytics.aggregatedImpact['Revenue'] && analytics.aggregatedImpact['Revenue'].target > 0 && (
-                                                    <div className="p-3 bg-green-50 rounded-lg">
-                                                        <div className="text-xs text-green-600 mb-1">Revenue</div>
-                                                        <div className="text-lg font-bold text-green-700">€{analytics.aggregatedImpact['Revenue'].target.toLocaleString()}</div>
+                                                    <div style={{ padding: 11, background: 'var(--green-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                                        <div style={{ fontSize: 11.5, color: 'var(--green-ink)', fontWeight: 700, marginBottom: 4 }}>Revenue</div>
+                                                        <div className="num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--green-ink)' }}>€{analytics.aggregatedImpact['Revenue'].target.toLocaleString()}</div>
                                                         {analytics.aggregatedImpact['Revenue'].achieved > 0 && (
-                                                            <div className="text-xs text-green-600">Achieved: €{analytics.aggregatedImpact['Revenue'].achieved.toLocaleString()}</div>
+                                                            <div style={{ fontSize: 11.5, color: 'var(--green-ink)' }}>Achieved: €{analytics.aggregatedImpact['Revenue'].achieved.toLocaleString()}</div>
                                                         )}
                                                     </div>
                                                 )}
                                                 {analytics.aggregatedImpact['Time Saved (Hours)'] && analytics.aggregatedImpact['Time Saved (Hours)'].target > 0 && (
-                                                    <div className="p-3 bg-blue-50 rounded-lg">
-                                                        <div className="text-xs text-blue-600 mb-1">Time Saved</div>
-                                                        <div className="text-lg font-bold text-blue-700">{analytics.aggregatedImpact['Time Saved (Hours)'].target.toFixed(1)}h</div>
+                                                    <div style={{ padding: 11, background: 'var(--accent-soft)', borderRadius: 'var(--radius-sm)' }}>
+                                                        <div style={{ fontSize: 11.5, color: 'var(--accent)', fontWeight: 700, marginBottom: 4 }}>Time Saved</div>
+                                                        <div className="num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)' }}>{analytics.aggregatedImpact['Time Saved (Hours)'].target.toFixed(1)}h</div>
                                                         {analytics.aggregatedImpact['Time Saved (Hours)'].achieved > 0 && (
-                                                            <div className="text-xs text-blue-600">Achieved: {analytics.aggregatedImpact['Time Saved (Hours)'].achieved.toFixed(1)}h</div>
+                                                            <div style={{ fontSize: 11.5, color: 'var(--accent)' }}>Achieved: {analytics.aggregatedImpact['Time Saved (Hours)'].achieved.toFixed(1)}h</div>
                                                         )}
                                                     </div>
                                                 )}
                                                 {analytics.aggregatedImpact['Cost Reduction'] && analytics.aggregatedImpact['Cost Reduction'].target > 0 && (
-                                                    <div className="p-3 bg-purple-50 rounded-lg">
-                                                        <div className="text-xs text-purple-600 mb-1">Cost Reduction</div>
-                                                        <div className="text-lg font-bold text-purple-700">${analytics.aggregatedImpact['Cost Reduction'].target.toLocaleString()}</div>
+                                                    <div style={{ padding: 11, background: 'color-mix(in srgb, #8b5cf6 14%, transparent)', borderRadius: 'var(--radius-sm)' }}>
+                                                        <div style={{ fontSize: 11.5, color: '#8b5cf6', fontWeight: 700, marginBottom: 4 }}>Cost Reduction</div>
+                                                        <div className="num" style={{ fontSize: 18, fontWeight: 800, color: '#8b5cf6' }}>${analytics.aggregatedImpact['Cost Reduction'].target.toLocaleString()}</div>
                                                         {analytics.aggregatedImpact['Cost Reduction'].achieved > 0 && (
-                                                            <div className="text-xs text-purple-600">Achieved: ${analytics.aggregatedImpact['Cost Reduction'].achieved.toLocaleString()}</div>
+                                                            <div style={{ fontSize: 11.5, color: '#8b5cf6' }}>Achieved: ${analytics.aggregatedImpact['Cost Reduction'].achieved.toLocaleString()}</div>
                                                         )}
                                                     </div>
                                                 )}
                                                 {analytics.aggregatedImpact['CSAT Score'] && analytics.aggregatedImpact['CSAT Score'].target > 0 && (
-                                                    <div className="p-3 bg-orange-50 rounded-lg">
-                                                        <div className="text-xs text-orange-600 mb-1">CSAT Score</div>
-                                                        <div className="text-lg font-bold text-orange-700">{analytics.aggregatedImpact['CSAT Score'].target.toFixed(1)}/10</div>
+                                                    <div style={{ padding: 11, background: 'var(--amber-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                                        <div style={{ fontSize: 11.5, color: 'var(--amber-ink)', fontWeight: 700, marginBottom: 4 }}>CSAT Score</div>
+                                                        <div className="num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--amber-ink)' }}>{analytics.aggregatedImpact['CSAT Score'].target.toFixed(1)}/10</div>
                                                         {analytics.aggregatedImpact['CSAT Score'].achieved > 0 && (
-                                                            <div className="text-xs text-orange-600">Achieved: {analytics.aggregatedImpact['CSAT Score'].achieved.toFixed(1)}</div>
+                                                            <div style={{ fontSize: 11.5, color: 'var(--amber-ink)' }}>Achieved: {analytics.aggregatedImpact['CSAT Score'].achieved.toFixed(1)}</div>
                                                         )}
                                                     </div>
                                                 )}
@@ -990,30 +993,28 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
 
                                     {/* Blockers */}
                                     {analytics.blockers && analytics.blockers.totalBlockers > 0 && (
-                                        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                                            <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                                <AlertCircle className="w-4 h-4 text-red-500" /> Blockers
-                                            </h3>
-                                            <div className="grid grid-cols-2 gap-4 mb-4">
-                                                <div className="text-center p-3 bg-red-50 rounded-lg">
-                                                    <div className="text-2xl font-bold text-red-600">{analytics.blockers.activeBlockers}</div>
-                                                    <div className="text-xs text-red-700">Active</div>
+                                        <div className="subpanel">
+                                            <div className="ph"><AlertCircle size={13} /> BLOCKERS</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                                                <div style={{ textAlign: 'center', padding: 11, background: 'var(--red-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                                    <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--red-ink)' }}>{analytics.blockers.activeBlockers}</div>
+                                                    <div style={{ fontSize: 11.5, color: 'var(--red-ink)', fontWeight: 600 }}>Active</div>
                                                 </div>
-                                                <div className="text-center p-3 bg-green-50 rounded-lg">
-                                                    <div className="text-2xl font-bold text-green-600">{analytics.blockers.resolvedBlockers}</div>
-                                                    <div className="text-xs text-green-700">Resolved</div>
+                                                <div style={{ textAlign: 'center', padding: 11, background: 'var(--green-bg)', borderRadius: 'var(--radius-sm)' }}>
+                                                    <div className="num" style={{ fontSize: 24, fontWeight: 800, color: 'var(--green-ink)' }}>{analytics.blockers.resolvedBlockers}</div>
+                                                    <div style={{ fontSize: 11.5, color: 'var(--green-ink)', fontWeight: 600 }}>Resolved</div>
                                                 </div>
                                             </div>
                                             {analytics.blockers.blockersByMember && Object.keys(analytics.blockers.blockersByMember).length > 0 && (
                                                 <div>
-                                                    <div className="text-xs font-medium text-slate-600 mb-2">By Team Member</div>
-                                                    <div className="space-y-2">
+                                                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 8 }}>By Team Member</div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                                         {Object.entries(analytics.blockers.blockersByMember).map(([memberName, counts]: [string, any]) => (
-                                                            <div key={memberName} className="flex justify-between items-center text-sm">
-                                                                <span className="text-slate-700">{memberName}</span>
-                                                                <span className="font-medium text-slate-900">
-                                                                    <span className="text-red-600">{counts.active}</span>
-                                                                    {counts.resolved > 0 && <span className="text-slate-400"> / {counts.resolved} resolved</span>}
+                                                            <div key={memberName} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                                                                <span style={{ color: 'var(--ink2)', fontWeight: 600 }}>{memberName}</span>
+                                                                <span style={{ fontWeight: 700 }}>
+                                                                    <span style={{ color: 'var(--red-ink)' }}>{counts.active}</span>
+                                                                    {counts.resolved > 0 && <span style={{ color: 'var(--faint)' }}> / {counts.resolved} resolved</span>}
                                                                 </span>
                                                             </div>
                                                         ))}
@@ -1024,13 +1025,10 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                                     )}
                                 </>
                             ) : (
-                                <div className="bg-white p-12 rounded-xl border border-slate-200 shadow-sm text-center">
-                                    <AlertCircle className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                                    <p className="text-slate-500">Failed to load analytics. Please try again.</p>
-                                    <button
-                                        onClick={loadAnalytics}
-                                        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                                    >
+                                <div className="subpanel" style={{ textAlign: 'center', padding: '48px 20px' }}>
+                                    <AlertCircle size={48} style={{ color: 'var(--faint)', margin: '0 auto 16px' }} />
+                                    <p style={{ color: 'var(--muted)' }}>Failed to load analytics. Please try again.</p>
+                                    <button className="btn" style={{ marginTop: 16 }} onClick={loadAnalytics}>
                                         Retry
                                     </button>
                                 </div>
@@ -1040,17 +1038,11 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 z-10">
-                    <button
-                        onClick={onClose}
-                        className="px-6 py-2 border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 transition-colors"
-                    >
+                <div className="modal-foot">
+                    <button className="btn-g btn" onClick={onClose}>
                         Cancel
                     </button>
-                    <button
-                        onClick={handleSave}
-                        className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md shadow-blue-600/20"
-                    >
+                    <button className="btn" onClick={handleSave}>
                         Save Project
                     </button>
                 </div>

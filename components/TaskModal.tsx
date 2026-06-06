@@ -8,6 +8,7 @@ import {
 import { Task, Subtask, ImpactMetric, TaskStatus, ImpactType, WorkCategory, Attachment, Priority, Comment, AutomationRule, User, Project, TaskBlocker } from '../types';
 import { TaskReport } from './TaskReport';
 import { api } from '../services/api';
+import { statusTagClass, statusLabel, priorityClass, currencySymbol } from '../lib/display';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -578,168 +579,164 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col border border-slate-200">
+    <div className="overlay" onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ width: 'min(94vw, 920px)', height: 'min(88vh, 720px)' }}>
 
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 bg-white z-10">
-            <div className="flex justify-between items-start mb-4">
-                <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="text-2xl font-bold text-slate-800 placeholder-slate-300 border-none focus:ring-0 p-0 w-full bg-transparent"
-                    placeholder="Task Title"
-                />
-                <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-500 transition-colors">
-                    <X className="w-6 h-6" />
+        <div className="modal-h">
+            <span className="proj-badge" style={{ width: 36, height: 36, borderRadius: 11, fontSize: 13, background: 'var(--accent-soft)', color: 'var(--accent)', borderColor: 'transparent' }}>
+                {taskToEdit ? <Target className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            </span>
+            <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="modal-title"
+                placeholder="Task Title"
+            />
+            <div className="seg" style={{ marginRight: 4 }}>
+                <button
+                    onClick={() => handleStatusChange(status)}
+                    className="on"
+                    style={{ cursor: 'default', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                    tabIndex={-1}
+                    type="button"
+                >
+                    <span className={'tag ' + statusTagClass(status)} style={{ border: 'none', background: 'none', padding: 0 }}>{statusLabel(status)}</span>
                 </button>
             </div>
+            <button className="icon-btn" onClick={onClose}><X className="w-5 h-5" /></button>
+        </div>
 
-            <div className="flex items-center gap-4 flex-wrap">
-                {/* Status Dropdown */}
-                <div className="relative group">
-                    <select
-                        value={status}
-                        onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
-                        className={`text-sm font-semibold pl-3 pr-8 py-1.5 rounded-full border-none focus:ring-2 focus:ring-offset-1 outline-none appearance-none cursor-pointer
-                            ${status === TaskStatus.COMPLETED ? 'bg-green-100 text-green-700 focus:ring-green-500' :
-                              status === TaskStatus.IN_PROGRESS ? 'bg-amber-100 text-amber-700 focus:ring-amber-500' :
-                              status === TaskStatus.REVIEW ? 'bg-purple-100 text-purple-700 focus:ring-purple-500' :
-                              'bg-slate-100 text-slate-700 focus:ring-slate-500'}`}
-                    >
-                        {availableStatuses.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-current opacity-50 pointer-events-none" />
-                </div>
-
-                 {/* Priority Dropdown */}
-                 <div className="relative group">
-                    <select
-                        value={priority}
-                        onChange={(e) => setPriority(e.target.value as Priority)}
-                        className={`text-sm font-semibold pl-3 pr-8 py-1.5 rounded-full border-none focus:ring-2 focus:ring-offset-1 outline-none appearance-none cursor-pointer
-                            ${priority === Priority.CRITICAL ? 'bg-red-100 text-red-700 focus:ring-red-500' :
-                              priority === Priority.HIGH ? 'bg-orange-100 text-orange-700 focus:ring-orange-500' :
-                              priority === Priority.MEDIUM ? 'bg-blue-50 text-blue-700 focus:ring-blue-500' :
-                              'bg-green-100 text-green-700 focus:ring-green-500'}`}
-                    >
-                        {Object.values(Priority).map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-current opacity-50 pointer-events-none" />
-                </div>
-
-                {/* Project Dropdown */}
-                <div className="relative group">
-                    <select
-                        value={projectId}
-                        onChange={(e) => setProjectId(e.target.value)}
-                        className="text-sm font-semibold pl-3 pr-8 py-1.5 rounded-full border-none focus:ring-2 focus:ring-offset-1 outline-none appearance-none cursor-pointer bg-purple-50 text-purple-700 focus:ring-purple-500"
-                    >
-                        <option value="">No Project</option>
-                        {projects.map(p => (
-                            <option key={p.id} value={p.id}>{p.title}</option>
-                        ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-current opacity-50 pointer-events-none" />
-                </div>
-
-                <div className="h-6 w-px bg-slate-200"></div>
-
-                <div className="flex bg-slate-100 p-1 rounded-lg overflow-x-auto">
-                    <button
-                        onClick={() => setActiveTab('DETAILS')}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'DETAILS' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Details
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('STRATEGY')}
-                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'STRATEGY' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Strategy
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('COLLAB')}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'COLLAB' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Notes {comments.length > 0 && <span className="bg-blue-100 text-blue-700 text-xs px-1.5 rounded-full">{comments.length}</span>}
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('REPORT')}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap ${activeTab === 'REPORT' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <BarChart2 className="w-4 h-4" /> Report
-                    </button>
-                </div>
+        {/* Inline classification controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 24px 0' }}>
+            <div className="field" style={{ marginBottom: 0, minWidth: 150 }}>
+                <select
+                    value={status}
+                    onChange={(e) => handleStatusChange(e.target.value as TaskStatus)}
+                    className="input"
+                >
+                    {availableStatuses.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
+                </select>
             </div>
+            <div className="field" style={{ marginBottom: 0, minWidth: 130 }}>
+                <select
+                    value={priority}
+                    onChange={(e) => setPriority(e.target.value as Priority)}
+                    className="input"
+                >
+                    {Object.values(Priority).map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+            </div>
+            <div className="field" style={{ marginBottom: 0, minWidth: 160 }}>
+                <select
+                    value={projectId}
+                    onChange={(e) => setProjectId(e.target.value)}
+                    className="input"
+                >
+                    <option value="">No Project</option>
+                    {projects.map(p => (
+                        <option key={p.id} value={p.id}>{p.title}</option>
+                    ))}
+                </select>
+            </div>
+            <span className={'pri ' + priorityClass(priority)}>{priority}</span>
+        </div>
+
+        {/* Tabs */}
+        <div className="modal-tabs">
+            <button
+                onClick={() => setActiveTab('DETAILS')}
+                className={'modal-tab' + (activeTab === 'DETAILS' ? ' on' : '')}
+            >
+                Details
+            </button>
+            <button
+                onClick={() => setActiveTab('STRATEGY')}
+                className={'modal-tab' + (activeTab === 'STRATEGY' ? ' on' : '')}
+            >
+                Strategy
+            </button>
+            <button
+                onClick={() => setActiveTab('COLLAB')}
+                className={'modal-tab' + (activeTab === 'COLLAB' ? ' on' : '')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+                Notes {comments.length > 0 && <span className="tag" style={{ padding: '2px 8px' }}>{comments.length}</span>}
+            </button>
+            <button
+                onClick={() => setActiveTab('REPORT')}
+                className={'modal-tab' + (activeTab === 'REPORT' ? ' on' : '')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+                <BarChart2 className="w-4 h-4" /> Report
+            </button>
         </div>
 
         {/* Content Scroll Area */}
-        <div className="overflow-y-auto bg-slate-50/50 h-[650px]">
+        <div className="modal-body">
 
           {/* TAB: REPORT */}
           {activeTab === 'REPORT' && (
-             <div className="p-8 max-w-4xl mx-auto">
+             <div style={{ maxWidth: 880, margin: '0 auto' }}>
                  <TaskReport task={currentTaskState} />
              </div>
           )}
 
           {/* TAB: NOTES/COLLAB */}
           {activeTab === 'COLLAB' && (
-              <div className="p-8 max-w-4xl mx-auto space-y-6">
+              <div style={{ maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
                  {/* Attachments Section */}
-                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                                <Paperclip className="w-4 h-4" /> Attachments
-                            </h3>
-                            <span className="text-xs text-slate-500">
+                 <div className="subpanel">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div className="ph" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+                                <Paperclip className="w-4 h-4" /> ATTACHMENTS
+                            </div>
+                            <span style={{ fontSize: 12, color: 'var(--muted)' }}>
                                 ({attachments.length}/3, max 5MB each)
                             </span>
                         </div>
                         <button
                             onClick={() => fileInputRef.current?.click()}
                             disabled={attachments.length >= 3}
-                            className={`text-xs font-medium flex items-center px-3 py-1 rounded-full transition-colors ${
-                                attachments.length >= 3
-                                    ? 'text-slate-400 bg-slate-100 cursor-not-allowed'
-                                    : 'text-blue-600 hover:text-blue-700 bg-blue-50'
-                            }`}
+                            className="btn-g btn"
+                            style={attachments.length >= 3 ? { opacity: .5, cursor: 'not-allowed' } : undefined}
                         >
-                            <Upload className="w-3 h-3 mr-1" /> Upload
+                            <Upload className="w-3 h-3" /> Upload
                         </button>
-                        <input type="file" ref={fileInputRef} className="hidden" multiple onChange={handleFileUpload} />
+                        <input type="file" ref={fileInputRef} style={{ display: 'none' }} multiple onChange={handleFileUpload} />
                     </div>
                     {attachmentError && (
-                        <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg animate-in fade-in slide-in-from-top-1">
-                            <p className="text-xs text-red-600 flex items-center gap-2">
+                        <div className="animate-in fade-in slide-in-from-top-1" style={{ marginBottom: 12, padding: 12, background: 'var(--red-bg)', border: '1px solid var(--red)', borderRadius: 'var(--radius-sm)' }}>
+                            <p style={{ fontSize: 12, color: 'var(--red-ink)', display: 'flex', alignItems: 'center', gap: 8 }}>
                                 <Bell className="w-4 h-4" />
                                 {attachmentError}
                             </p>
                         </div>
                     )}
-                    <div className="grid grid-cols-2 gap-3">
-                        {attachments.length === 0 && <p className="text-slate-400 text-xs italic col-span-2">No files attached.</p>}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        {attachments.length === 0 && <p style={{ color: 'var(--faint)', fontSize: 12, fontStyle: 'italic', gridColumn: '1 / -1' }}>No files attached.</p>}
                         {attachments.map(file => (
-                          <div key={file.id} className="flex items-center p-2 bg-slate-50 border border-slate-200 rounded-lg group hover:bg-slate-100 transition-colors">
-                             <div className="p-1.5 bg-white rounded mr-2"><Paperclip className="w-4 h-4 text-slate-500" /></div>
-                             <div className="flex-1 min-w-0">
-                                <h4 className="text-xs font-medium truncate">{file.name}</h4>
-                                <p className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                          <div key={file.id} style={{ display: 'flex', alignItems: 'center', padding: 8, background: 'var(--inset)', border: '1px solid var(--line)', borderRadius: 'var(--radius-sm)' }}>
+                             <div style={{ padding: 6, background: 'var(--panel)', borderRadius: 8, marginRight: 8 }}><Paperclip className="w-4 h-4" style={{ color: 'var(--muted)' }} /></div>
+                             <div style={{ flex: 1, minWidth: 0 }}>
+                                <h4 style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--ink)' }}>{file.name}</h4>
+                                <p style={{ fontSize: 12, color: 'var(--faint)' }}>{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                              </div>
-                             <div className="flex items-center gap-1">
+                             <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <button
                                     onClick={() => handleDownloadAttachment(file)}
-                                    className="p-1 text-slate-400 hover:text-blue-600 transition-colors"
+                                    className="icon-btn"
+                                    style={{ width: 30, height: 30 }}
                                     title="Download file"
                                 >
                                     <Download className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                     onClick={() => handleDeleteAttachment(file.id)}
-                                    className="p-1 text-slate-400 hover:text-red-500 transition-colors"
+                                    className="icon-btn"
+                                    style={{ width: 30, height: 30, color: 'var(--red)' }}
                                     title="Delete file"
                                 >
                                     <Trash className="w-3.5 h-3.5" />
@@ -751,13 +748,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                  </div>
 
                  {/* Links */}
-                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><LinkIcon className="w-4 h-4" /> Resources</h3>
-                    <div className="space-y-2">
+                 <div className="subpanel">
+                    <div className="ph" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><LinkIcon className="w-4 h-4" /> RESOURCES</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {resourceLinks.map((link, idx) => (
-                            <div key={idx} className="flex gap-2 items-center">
+                            <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                                 <input
-                                    className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm bg-white"
+                                    className="input"
+                                    style={{ flex: 1 }}
                                     value={link.title}
                                     onChange={(e) => {
                                         const newLinks = [...resourceLinks];
@@ -767,7 +765,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                     placeholder="Resource Title"
                                 />
                                 <input
-                                    className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm bg-white"
+                                    className="input"
+                                    style={{ flex: 1 }}
                                     value={link.url}
                                     onChange={(e) => {
                                         const newLinks = [...resourceLinks];
@@ -781,7 +780,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                                        className="icon-btn"
+                                        style={{ flex: '0 0 auto', color: 'var(--accent)' }}
                                         title="Open in new tab"
                                     >
                                         <ExternalLink className="w-4 h-4" />
@@ -789,14 +789,15 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                 )}
                                 <button
                                     onClick={() => setResourceLinks(resourceLinks.filter((_, i) => i !== idx))}
-                                    className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                                    className="icon-btn"
+                                    style={{ flex: '0 0 auto', color: 'var(--red)' }}
                                     title="Remove link"
                                 >
                                     <Trash className="w-4 h-4"/>
                                 </button>
                             </div>
                         ))}
-                        <button onClick={() => setResourceLinks([...resourceLinks, {title: '', url: ''}])} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                        <button onClick={() => setResourceLinks([...resourceLinks, {title: '', url: ''}])} className="btn-ghost btn" style={{ alignSelf: 'flex-start' }}>
                             <Plus className="w-3 h-3" /> Add Link
                         </button>
                     </div>
@@ -804,45 +805,46 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
                  {/* Blockers */}
                  {projectId && taskToEdit && (
-                   <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                          <AlertCircleIcon className="w-4 h-4 text-red-500" /> Blockers
-                        </h3>
+                   <div className="subpanel">
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                        <div className="ph" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+                          <AlertCircleIcon className="w-4 h-4" style={{ color: 'var(--red)' }} /> BLOCKERS
+                        </div>
                         {availableTeamMembers.length === 0 && (
-                          <p className="text-xs text-slate-400 italic">Add team members to the project first</p>
+                          <p style={{ fontSize: 12, color: 'var(--faint)', fontStyle: 'italic' }}>Add team members to the project first</p>
                         )}
                       </div>
 
                       {blockers.length === 0 && (
-                        <p className="text-slate-400 text-sm italic mb-4">No blockers assigned.</p>
+                        <p style={{ color: 'var(--faint)', fontSize: 13, fontStyle: 'italic', marginBottom: 14 }}>No blockers assigned.</p>
                       )}
 
-                      <div className="space-y-3 mb-4">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 14 }}>
                         {blockers.map(blocker => (
-                          <div key={blocker.id} className={`p-3 rounded-lg border ${blocker.resolvedAt ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Users className="w-4 h-4 text-slate-600" />
-                                  <span className="font-semibold text-sm text-slate-800">{blocker.teamMemberName}</span>
+                          <div key={blocker.id} style={{ padding: 12, borderRadius: 'var(--radius-sm)', border: '1px solid', background: blocker.resolvedAt ? 'var(--green-bg)' : 'var(--red-bg)', borderColor: blocker.resolvedAt ? 'var(--green)' : 'var(--red)' }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                  <Users className="w-4 h-4" style={{ color: 'var(--ink2)' }} />
+                                  <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--ink)' }}>{blocker.teamMemberName}</span>
                                   {blocker.resolvedAt && (
-                                    <span className="text-xs bg-green-600 text-white px-2 py-0.5 rounded-full">Resolved</span>
+                                    <span className="tag t-done" style={{ background: 'var(--green)', color: '#fff', border: 'none' }}>Resolved</span>
                                   )}
                                 </div>
                                 {blocker.reason && (
-                                  <p className="text-sm text-slate-600 ml-6">{blocker.reason}</p>
+                                  <p style={{ fontSize: 13, color: 'var(--ink2)', marginLeft: 24 }}>{blocker.reason}</p>
                                 )}
-                                <p className="text-xs text-slate-400 ml-6 mt-1">
+                                <p style={{ fontSize: 12, color: 'var(--faint)', marginLeft: 24, marginTop: 4 }}>
                                   Added {new Date(blocker.createdAt).toLocaleDateString()}
                                   {blocker.resolvedAt && ` • Resolved ${new Date(blocker.resolvedAt).toLocaleDateString()}`}
                                 </p>
                               </div>
-                              <div className="flex items-center gap-1">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 {!blocker.resolvedAt && (
                                   <button
                                     onClick={() => handleResolveBlocker(blocker.id)}
-                                    className="p-1.5 text-green-600 hover:bg-green-100 rounded transition-colors"
+                                    className="icon-btn"
+                                    style={{ width: 30, height: 30, color: 'var(--green)' }}
                                     title="Mark as resolved"
                                   >
                                     <CheckCircle2 className="w-4 h-4" />
@@ -850,7 +852,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                 )}
                                 <button
                                   onClick={() => handleRemoveBlocker(blocker.id)}
-                                  className="p-1.5 text-red-500 hover:bg-red-100 rounded transition-colors"
+                                  className="icon-btn"
+                                  style={{ width: 30, height: 30, color: 'var(--red)' }}
                                   title="Remove blocker"
                                 >
                                   <Trash className="w-4 h-4" />
@@ -862,10 +865,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       </div>
 
                       {availableTeamMembers.length > 0 && (
-                        <div className="flex flex-col gap-2">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                           <select
                             id="blocker-select"
-                            className="flex-1 text-sm border border-slate-300 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="input"
                             defaultValue=""
                             onChange={(e) => {
                               const memberId = e.target.value;
@@ -884,7 +887,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                               ))
                             }
                           </select>
-                          <p className="text-xs text-slate-500 italic">
+                          <p style={{ fontSize: 12, color: 'var(--muted)', fontStyle: 'italic' }}>
                             Team members who are blocking this task from being completed
                           </p>
                         </div>
@@ -893,37 +896,38 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                  )}
 
                  {/* Notes */}
-                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><MessageSquare className="w-4 h-4" /> Notes</h3>
-                    <div className="space-y-4 mb-6 max-h-[300px] overflow-y-auto">
-                        {comments.length === 0 && <p className="text-slate-400 text-sm italic">No notes yet.</p>}
+                 <div className="subpanel">
+                    <div className="ph" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><MessageSquare className="w-4 h-4" /> NOTES</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 16, maxHeight: 300, overflowY: 'auto' }}>
+                        {comments.length === 0 && <p style={{ color: 'var(--faint)', fontSize: 13, fontStyle: 'italic' }}>No notes yet.</p>}
                         {comments.map(c => (
-                            <div key={c.id} className="flex gap-3">
-                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold flex-shrink-0">
+                            <div key={c.id} style={{ display: 'flex', gap: 12 }}>
+                                <span className="ava" style={{ background: 'var(--accent-soft)', color: 'var(--accent)', border: 'none' }}>
                                     {currentUser.avatarInitials}
-                                </div>
-                                <div className="flex-1">
-                                    <div className="bg-slate-50 p-3 rounded-lg rounded-tl-none border border-slate-100">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-xs font-bold text-slate-700">{currentUser.name}</span>
-                                            <span className="text-[10px] text-slate-400">{new Date(c.createdAt).toLocaleString()}</span>
+                                </span>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ background: 'var(--inset)', padding: 12, borderRadius: 'var(--radius-sm)', borderTopLeftRadius: 0, border: '1px solid var(--line)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                                            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink2)' }}>{currentUser.name}</span>
+                                            <span style={{ fontSize: 10, color: 'var(--faint)' }}>{new Date(c.createdAt).toLocaleString()}</span>
                                         </div>
-                                        <p className="text-sm text-slate-600">{c.text}</p>
+                                        <p style={{ fontSize: 13, color: 'var(--ink2)' }}>{c.text}</p>
                                     </div>
                                 </div>
                             </div>
                         ))}
                     </div>
-                    <div className="flex gap-2">
+                    <div style={{ display: 'flex', gap: 8 }}>
                         <input
                             type="text"
                             value={newCommentText}
                             onChange={(e) => setNewCommentText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAddComment()}
                             placeholder="Add a note..."
-                            className="flex-1 border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                            className="input"
+                            style={{ flex: 1 }}
                         />
-                        <button onClick={handleAddComment} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Add</button>
+                        <button onClick={handleAddComment} className="btn">Add</button>
                     </div>
                  </div>
               </div>
@@ -931,41 +935,41 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
           {/* TAB: STRATEGY */}
           {activeTab === 'STRATEGY' && (
-              <div className="p-8 max-w-4xl mx-auto space-y-6">
+              <div style={{ maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                 {/* KPI Section */}
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                            <BarChart2 className="w-4 h-4 text-blue-500" /> Key Performance Indicators (KPIs)
-                        </h3>
-                        <button onClick={handleAddMetric} className="text-blue-600 text-xs font-bold hover:underline bg-blue-50 px-3 py-1.5 rounded-full">+ Add Metric</button>
+                <div className="subpanel">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                        <div className="ph" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: 7 }}>
+                            <BarChart2 className="w-4 h-4" style={{ color: 'var(--accent)' }} /> KEY PERFORMANCE INDICATORS (KPIS)
+                        </div>
+                        <button onClick={handleAddMetric} className="btn-g btn"><Plus className="w-3 h-3" /> Add Metric</button>
                     </div>
-                    <div className="space-y-3">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         {impactMetrics.map(metric => (
-                            <div key={metric.id} className="flex flex-wrap md:flex-nowrap gap-3 items-start bg-slate-50 p-3 rounded-lg border border-slate-100 animate-in fade-in">
-                                <div className="w-full md:w-1/4">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Type</label>
+                            <div key={metric.id} className="animate-in fade-in" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start', background: 'var(--inset)', padding: 12, borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                                <div className="field" style={{ marginBottom: 0, flex: '1 1 180px' }}>
+                                    <label>Type</label>
                                     <select
                                         value={metric.type}
                                         onChange={(e) => handleUpdateMetric(metric.id, { type: e.target.value as ImpactType })}
-                                        className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
+                                        className="input"
                                     >
                                         {Object.values(ImpactType).map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
-                                <div className="w-1/2 md:w-1/6">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Target</label>
+                                <div className="field" style={{ marginBottom: 0, flex: '1 1 100px' }}>
+                                    <label>Target</label>
                                     <input
                                         type="number"
                                         value={metric.value}
                                         onChange={(e) => handleUpdateMetric(metric.id, { value: parseFloat(e.target.value) })}
-                                        className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
+                                        className="input"
                                     />
                                 </div>
                                 {taskToEdit && (
-                                    <div className="w-1/2 md:w-1/6">
-                                        <label className="text-[10px] font-bold text-emerald-600 uppercase mb-1 block">Achieved</label>
+                                    <div className="field" style={{ marginBottom: 0, flex: '1 1 100px' }}>
+                                        <label style={{ color: 'var(--green-ink)' }}>Achieved</label>
                                         <input
                                             type="number"
                                             value={metric.achievedValue ?? ''}
@@ -975,18 +979,19 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                                     achievedValue: value === '' ? undefined : parseFloat(value)
                                                 });
                                             }}
-                                            className="w-full text-xs border border-emerald-200 rounded px-2 py-1.5 bg-emerald-50 outline-none focus:border-emerald-500 font-semibold"
+                                            className="input"
+                                            style={{ background: 'var(--green-bg)', borderColor: 'var(--green)', fontWeight: 600 }}
                                             placeholder="0"
                                         />
                                     </div>
                                 )}
                                 {metric.type === ImpactType.REVENUE && (
-                                    <div className="w-1/2 md:w-1/6">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Currency</label>
+                                    <div className="field" style={{ marginBottom: 0, flex: '1 1 100px' }}>
+                                        <label>Currency</label>
                                         <select
                                            value={metric.currency}
                                            onChange={(e) => handleUpdateMetric(metric.id, { currency: e.target.value as any })}
-                                           className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
+                                           className="input"
                                         >
                                             <option value="USD">USD</option>
                                             <option value="EUR">EUR</option>
@@ -994,23 +999,23 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         </select>
                                     </div>
                                 )}
-                                <div className="flex-1 min-w-[200px]">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Context</label>
+                                <div className="field" style={{ marginBottom: 0, flex: '2 1 200px' }}>
+                                    <label>Context</label>
                                     <input
                                         type="text"
                                         value={metric.description}
                                         onChange={(e) => handleUpdateMetric(metric.id, { description: e.target.value })}
                                         placeholder="e.g. Q3 Revenue Target"
-                                        className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-white outline-none focus:border-blue-500"
+                                        className="input"
                                     />
                                 </div>
-                                <button onClick={() => handleDeleteMetric(metric.id)} className="mt-6 text-slate-400 hover:text-red-500 hover:bg-red-50 p-1 rounded transition-colors">
+                                <button onClick={() => handleDeleteMetric(metric.id)} className="icon-btn" style={{ marginTop: 24, width: 34, height: 34, color: 'var(--red)' }}>
                                     <Trash className="w-4 h-4" />
                                 </button>
                             </div>
                         ))}
                         {impactMetrics.length === 0 && (
-                            <div className="text-center py-6 border-2 border-dashed border-slate-100 rounded-lg text-slate-400 text-xs">
+                            <div style={{ textAlign: 'center', padding: '24px 12px', border: '2px dashed var(--line)', borderRadius: 'var(--radius-sm)', color: 'var(--faint)', fontSize: 12 }}>
                                 No KPIs defined. Add metrics to track success.
                             </div>
                         )}
@@ -1018,51 +1023,54 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 </div>
 
                 {/* OKRs */}
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center gap-2"><Target className="w-4 h-4 text-red-500" /> Strategic Alignment (OKRs)</label>
-                    <div className="space-y-2 mb-3">
+                <div className="subpanel">
+                    <div className="ph" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><Target className="w-4 h-4" style={{ color: 'var(--red)' }} /> STRATEGIC ALIGNMENT (OKRS)</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
                         {okrs.map((okr, index) => (
-                            <div key={index} className="flex items-center gap-2 bg-slate-50 p-2 rounded border border-slate-200">
-                                <span className="flex-1 text-sm text-slate-700">{okr}</span>
-                                <button onClick={() => handleRemoveOkr(index)} className="text-slate-400 hover:text-red-500 p-1 rounded">
+                            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--inset)', padding: 8, borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)' }}>
+                                <span style={{ flex: 1, fontSize: 13, color: 'var(--ink2)' }}>{okr}</span>
+                                <button onClick={() => handleRemoveOkr(index)} className="icon-btn" style={{ width: 28, height: 28, color: 'var(--red)' }}>
                                     <Trash className="w-3 h-3" />
                                 </button>
                             </div>
                         ))}
                     </div>
-                    <div className="flex gap-2">
+                    <div style={{ display: 'flex', gap: 8 }}>
                         <input
                             type="text"
                             value={newOkrInput}
                             onChange={(e) => setNewOkrInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleAddOkr()}
-                            className="flex-1 px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                            className="input"
+                            style={{ flex: 1 }}
                             placeholder="Add new OKR (e.g. Increase Q3 Efficiency by 15%)..."
                         />
-                        <button onClick={handleAddOkr} className="px-3 py-2 bg-blue-50 text-blue-600 rounded-lg font-bold text-xs hover:bg-blue-100">
+                        <button onClick={handleAddOkr} className="btn-g btn">
                             Add OKR
                         </button>
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-2"><History className="w-4 h-4" /> Impact Comparison</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Before Scenario</label>
+                <div className="subpanel">
+                    <div className="ph" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><History className="w-4 h-4" /> IMPACT COMPARISON</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
+                        <div className="field" style={{ marginBottom: 0 }}>
+                            <label>Before Scenario</label>
                             <textarea
                                 value={beforeScenario}
                                 onChange={(e) => setBeforeScenario(e.target.value)}
-                                className="w-full h-24 p-3 bg-white border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="textarea"
+                                style={{ minHeight: 96 }}
                                 placeholder="Describe the current state..."
                             />
                         </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase mb-1">Expected Outcome</label>
+                        <div className="field" style={{ marginBottom: 0 }}>
+                            <label>Expected Outcome</label>
                             <textarea
                                 value={afterScenario}
                                 onChange={(e) => setAfterScenario(e.target.value)}
-                                className="w-full h-24 p-3 bg-white border border-emerald-100 rounded-lg text-sm resize-none focus:ring-2 focus:ring-emerald-500 outline-none"
+                                className="textarea"
+                                style={{ minHeight: 96 }}
                                 placeholder="Describe the desired future state..."
                             />
                         </div>
@@ -1075,66 +1083,68 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
           {/* TAB: DETAILS */}
           {activeTab === 'DETAILS' && (
-            <div className="p-8 max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div style={{ maxWidth: 980, margin: '0 auto', display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(280px, 1fr)', gap: 22 }}>
               {/* Left Column: Main Content */}
-              <div className="lg:col-span-2 space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Description</label>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full px-4 py-3 bg-white text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all h-32 resize-none shadow-sm"
+                    className="textarea"
                     placeholder="Detailed description of the task..."
                   />
                 </div>
 
                 {/* Subtasks */}
                 <div>
-                    <div className="flex items-center justify-between mb-3">
-                        <label className="block text-sm font-bold text-slate-800">Work Breakdown</label>
-                        <button onClick={handleAddSubtask} className="text-blue-600 hover:text-blue-700 text-xs font-bold flex items-center bg-blue-50 px-3 py-1.5 rounded-full transition-colors">
-                            <Plus className="w-3 h-3 mr-1" /> Add Step
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <div className="ph" style={{ marginBottom: 0 }}>WORK BREAKDOWN</div>
+                        <button onClick={handleAddSubtask} className="btn-g btn">
+                            <Plus className="w-3 h-3" /> Add Step
                         </button>
                     </div>
-                    <div className="space-y-3">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                         {subtasks.map((subtask, index) => (
-                            <div key={subtask.id} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm transition-all hover:border-blue-300 group">
-                                <div className="flex items-center gap-3 p-3 bg-slate-50/50 hover:bg-white transition-colors">
-                                    <button onClick={() => toggleSubtaskExpand(subtask.id)} className="text-slate-400 hover:text-slate-600">
+                            <div key={subtask.id} className="subpanel group" style={{ padding: 0, overflow: 'hidden' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 12, background: 'var(--inset)' }}>
+                                    <button onClick={() => toggleSubtaskExpand(subtask.id)} className="icon-btn" style={{ width: 28, height: 28, border: 'none', background: 'none' }}>
                                         {expandedSubtaskId === subtask.id ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>}
                                     </button>
-                                    <button onClick={() => handleUpdateSubtask(subtask.id, { completed: !subtask.completed })} className={`${subtask.completed ? 'text-green-500' : 'text-slate-300 hover:text-slate-400'}`}>
-                                        {subtask.completed ? <CheckCircle2 className="w-5 h-5" /> : <Circle className="w-5 h-5" />}
+                                    <button onClick={() => handleUpdateSubtask(subtask.id, { completed: !subtask.completed })} className={'tcheck' + (subtask.completed ? ' done' : '')}>
+                                        {subtask.completed ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Circle className="w-3.5 h-3.5" style={{ opacity: 0 }} />}
                                     </button>
                                     <input
                                         type="text"
                                         value={subtask.title}
                                         onChange={(e) => handleUpdateSubtask(subtask.id, { title: e.target.value })}
-                                        className={`bg-transparent border-none focus:ring-0 p-0 text-sm font-medium w-full ${subtask.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}
+                                        className="modal-title"
+                                        style={{ fontSize: 14, fontWeight: 500, flex: 1, textDecoration: subtask.completed ? 'line-through' : 'none', color: subtask.completed ? 'var(--faint)' : 'var(--ink)' }}
                                     />
                                     <button
                                         onClick={() => handleUpdateSubtask(subtask.id, { isMilestone: !subtask.isMilestone })}
-                                        className={`p-1 rounded hover:bg-slate-100 transition-colors ${subtask.isMilestone ? 'bg-white' : 'bg-white'}`}
+                                        className="icon-btn"
+                                        style={{ width: 28, height: 28, border: 'none', background: 'none', color: subtask.isMilestone ? 'var(--accent)' : 'var(--faint)' }}
                                         title={subtask.isMilestone ? "This is a milestone" : "Mark as Milestone"}
                                     >
-                                        <Flag className={`w-4 h-4 ${subtask.isMilestone ? 'fill-purple-600 text-purple-600' : 'text-slate-300 hover:text-purple-400'}`} />
+                                        <Flag className="w-4 h-4" style={subtask.isMilestone ? { fill: 'var(--accent)' } : undefined} />
                                     </button>
-                                    <button onClick={() => handleMoveSubtaskUp(subtask.id)} disabled={index === 0} className={`p-1 opacity-0 group-hover:opacity-100 ${index === 0 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-300 hover:text-blue-500'}`} title="Move up"><ChevronUp className="w-4 h-4" /></button>
-                                    <button onClick={() => handleMoveSubtaskDown(subtask.id)} disabled={index === subtasks.length - 1} className={`p-1 opacity-0 group-hover:opacity-100 ${index === subtasks.length - 1 ? 'text-slate-200 cursor-not-allowed' : 'text-slate-300 hover:text-blue-500'}`} title="Move down"><ChevronDown className="w-4 h-4" /></button>
-                                    <button onClick={() => handleDeleteSubtask(subtask.id)} className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100"><Trash className="w-4 h-4" /></button>
+                                    <button onClick={() => handleMoveSubtaskUp(subtask.id)} disabled={index === 0} className="icon-btn" style={{ width: 28, height: 28, border: 'none', background: 'none', opacity: index === 0 ? .3 : 1, cursor: index === 0 ? 'not-allowed' : 'pointer' }} title="Move up"><ChevronUp className="w-4 h-4" /></button>
+                                    <button onClick={() => handleMoveSubtaskDown(subtask.id)} disabled={index === subtasks.length - 1} className="icon-btn" style={{ width: 28, height: 28, border: 'none', background: 'none', opacity: index === subtasks.length - 1 ? .3 : 1, cursor: index === subtasks.length - 1 ? 'not-allowed' : 'pointer' }} title="Move down"><ChevronDown className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteSubtask(subtask.id)} className="icon-btn" style={{ width: 28, height: 28, border: 'none', background: 'none', color: 'var(--red)' }}><Trash className="w-4 h-4" /></button>
                                 </div>
                                 {expandedSubtaskId === subtask.id && (
-                                    <div className="p-4 border-t border-slate-100 bg-white grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="space-y-3">
-                                            <div>
-                                                <label className="text-xs font-medium text-slate-500">Category</label>
-                                                <select value={subtask.category} onChange={(e) => handleUpdateSubtask(subtask.id, { category: e.target.value as WorkCategory })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-slate-50">
+                                    <div style={{ padding: 16, borderTop: '1px solid var(--line)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                            <div className="field" style={{ marginBottom: 0 }}>
+                                                <label>Category</label>
+                                                <select value={subtask.category} onChange={(e) => handleUpdateSubtask(subtask.id, { category: e.target.value as WorkCategory })} className="input">
                                                     {Object.values(WorkCategory).map(c => <option key={c} value={c}>{c}</option>)}
                                                 </select>
                                             </div>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-500">Est. Hours</label>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                                <div className="field" style={{ marginBottom: 0 }}>
+                                                    <label>Est. Hours</label>
                                                     <input
                                                         type="number"
                                                         min="0"
@@ -1142,11 +1152,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                                         value={subtask.estimatedHours || 0}
                                                         onChange={(e) => handleUpdateSubtask(subtask.id, { estimatedHours: parseFloat(e.target.value) || 0 })}
                                                         disabled={!!taskToEdit}
-                                                        className={`w-full text-xs border border-slate-200 rounded px-2 py-1.5 ${taskToEdit ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'}`}
+                                                        className="input"
+                                                        style={taskToEdit ? { background: 'var(--inset)', cursor: 'not-allowed' } : undefined}
                                                     />
                                                 </div>
-                                                <div>
-                                                    <label className="text-xs font-medium text-slate-500">Actual Hours</label>
+                                                <div className="field" style={{ marginBottom: 0 }}>
+                                                    <label>Actual Hours</label>
                                                     <input
                                                         type="number"
                                                         min="0"
@@ -1154,10 +1165,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                                         value={subtask.hoursSpent}
                                                         onChange={(e) => handleUpdateSubtask(subtask.id, { hoursSpent: parseFloat(e.target.value) || 0 })}
                                                         disabled={!taskToEdit}
-                                                        className={`w-full text-xs border ${subtaskNeedingHours === subtask.id ? 'border-red-400 ring-2 ring-red-200' : 'border-slate-200'} rounded px-2 py-1.5 ${!taskToEdit ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'}`}
+                                                        className="input"
+                                                        style={{
+                                                            ...(subtaskNeedingHours === subtask.id ? { borderColor: 'var(--red)', boxShadow: '0 0 0 3px var(--red-bg)' } : {}),
+                                                            ...(!taskToEdit ? { background: 'var(--inset)', cursor: 'not-allowed' } : {})
+                                                        }}
                                                     />
                                                     {subtaskNeedingHours === subtask.id && (
-                                                        <p className="text-xs text-red-600 mt-1 animate-in fade-in slide-in-from-top-1 flex items-center gap-1">
+                                                        <p className="animate-in fade-in slide-in-from-top-1" style={{ fontSize: 12, color: 'var(--red-ink)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
                                                             <Bell className="w-3 h-3" />
                                                             Please enter actual hours before completing
                                                         </p>
@@ -1165,32 +1180,33 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex flex-col h-full space-y-2">
-                                            <div className="flex-1">
-                                                <label className="text-xs font-medium text-slate-500 mb-1 block">Notes</label>
-                                                <textarea value={subtask.notes} onChange={(e) => handleUpdateSubtask(subtask.id, { notes: e.target.value })} className="w-full text-xs border border-slate-200 rounded px-2 py-1.5 bg-slate-50 h-20 resize-none" placeholder="Details..." />
+                                        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+                                            <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                                                <label>Notes</label>
+                                                <textarea value={subtask.notes} onChange={(e) => handleUpdateSubtask(subtask.id, { notes: e.target.value })} className="textarea" style={{ minHeight: 80 }} placeholder="Details..." />
                                             </div>
-                                            <div className="space-y-2">
-                                                <div className="flex items-center gap-2">
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                     <input
                                                         type="checkbox"
                                                         id={`milestone-${subtask.id}`}
                                                         checked={subtask.isMilestone || false}
                                                         onChange={(e) => handleUpdateSubtask(subtask.id, { isMilestone: e.target.checked })}
-                                                        className="w-3 h-3 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer bg-white"
+                                                        style={{ width: 14, height: 14, accentColor: 'var(--accent)', cursor: 'pointer' }}
                                                     />
-                                                    <label htmlFor={`milestone-${subtask.id}`} className="text-xs font-medium text-slate-600 cursor-pointer flex items-center gap-1 select-none">
-                                                        <Flag className="w-3 h-3 text-purple-600" /> Mark as Key Milestone
+                                                    <label htmlFor={`milestone-${subtask.id}`} style={{ fontSize: 12, fontWeight: 500, color: 'var(--ink2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, userSelect: 'none' }}>
+                                                        <Flag className="w-3 h-3" style={{ color: 'var(--accent)' }} /> Mark as Key Milestone
                                                     </label>
                                                 </div>
                                                 {subtask.isMilestone && (
-                                                    <div className="pl-5 animate-in fade-in slide-in-from-top-1">
+                                                    <div className="animate-in fade-in slide-in-from-top-1" style={{ paddingLeft: 20 }}>
                                                         <input
                                                             type="text"
                                                             value={subtask.milestoneDescription || ''}
                                                             onChange={(e) => handleUpdateSubtask(subtask.id, { milestoneDescription: e.target.value })}
                                                             placeholder="e.g., Completed primary tasks, Setup stages complete..."
-                                                            className="w-full text-xs border border-purple-200 rounded px-2 py-1.5 bg-purple-50 focus:ring-2 focus:ring-purple-500 outline-none"
+                                                            className="input"
+                                                            style={{ background: 'var(--accent-softer)', borderColor: 'var(--accent-soft)' }}
                                                         />
                                                     </div>
                                                 )}
@@ -1205,12 +1221,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               </div>
 
               {/* Right Column: Meta Data */}
-              <div className="space-y-6">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4">
-                    <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2">Planning</h3>
-                    <div className="space-y-3">
-                        <div>
-                            <label className="text-xs font-medium text-slate-600 mb-1 block">Start Date</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+                <div className="subpanel" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div className="ph" style={{ marginBottom: 0 }}>PLANNING</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div className="field" style={{ marginBottom: 0 }}>
+                            <label>Start Date</label>
                             <input
                                 type="date"
                                 value={startDate}
@@ -1221,44 +1237,46 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                     }
                                 }}
                                 onClick={handleSafeShowPicker}
-                                className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="input"
+                                style={{ cursor: 'pointer' }}
                             />
                         </div>
-                        <div>
-                            <label className="text-xs font-medium text-slate-600 mb-1 block">Due Date</label>
+                        <div className="field" style={{ marginBottom: 0 }}>
+                            <label>Due Date</label>
                             <input
                                 type="date"
                                 value={dueDate}
                                 onChange={(e) => setDueDate(e.target.value)}
                                 onClick={handleSafeShowPicker}
                                 min={startDate || undefined}
-                                className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-2 cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="input"
+                                style={{ cursor: 'pointer' }}
                             />
                         </div>
                     </div>
 
                     {/* Recurring Task Configuration */}
-                    <div className="border-t border-slate-200 pt-4">
-                        <label className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-3 cursor-pointer">
+                    <div style={{ borderTop: '1px solid var(--line)', paddingTop: 16 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 700, color: 'var(--ink2)', marginBottom: 12, cursor: 'pointer' }}>
                             <input
                                 type="checkbox"
                                 checked={isRecurring}
                                 onChange={(e) => setIsRecurring(e.target.checked)}
-                                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                                style={{ width: 16, height: 16, accentColor: 'var(--accent)' }}
                             />
                             <ArrowUpDown className="w-4 h-4" />
                             Make this a recurring task
                         </label>
 
                         {isRecurring && (
-                            <div className="space-y-3 pl-6 animate-in fade-in slide-in-from-top-2">
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div>
-                                        <label className="text-xs text-slate-500 mb-1 block">Frequency</label>
+                            <div className="animate-in fade-in slide-in-from-top-2" style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingLeft: 24 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                                    <div className="field" style={{ marginBottom: 0 }}>
+                                        <label>Frequency</label>
                                         <select
                                             value={recurrenceFrequency}
                                             onChange={(e) => setRecurrenceFrequency(e.target.value as any)}
-                                            className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="input"
                                         >
                                             <option value="DAILY">Daily</option>
                                             <option value="WEEKLY">Weekly</option>
@@ -1266,23 +1284,23 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                             <option value="YEARLY">Yearly</option>
                                         </select>
                                     </div>
-                                    <div>
-                                        <label className="text-xs text-slate-500 mb-1 block">Every</label>
+                                    <div className="field" style={{ marginBottom: 0 }}>
+                                        <label>Every</label>
                                         <input
                                             type="number"
                                             min="1"
                                             max="99"
                                             value={recurrenceInterval}
                                             onChange={(e) => setRecurrenceInterval(parseInt(e.target.value) || 1)}
-                                            className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-1.5 focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="input"
                                         />
                                     </div>
                                 </div>
 
                                 {recurrenceFrequency === 'WEEKLY' && (
-                                    <div>
-                                        <label className="text-xs text-slate-500 mb-2 block">Days of Week</label>
-                                        <div className="grid grid-cols-7 gap-1">
+                                    <div className="field" style={{ marginBottom: 0 }}>
+                                        <label>Days of Week</label>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
                                             {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
                                                 <button
                                                     key={index}
@@ -1294,11 +1312,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                                             setRecurrenceWeekDays([...recurrenceWeekDays, index].sort());
                                                         }
                                                     }}
-                                                    className={`text-xs py-1.5 rounded font-medium transition-colors ${
-                                                        recurrenceWeekDays.includes(index)
-                                                            ? 'bg-blue-600 text-white'
-                                                            : 'bg-white border border-slate-300 text-slate-600 hover:bg-slate-50'
-                                                    }`}
+                                                    className={recurrenceWeekDays.includes(index) ? 'btn' : 'btn-g btn'}
+                                                    style={{ padding: '6px 0', justifyContent: 'center', fontSize: 12, boxShadow: 'none' }}
                                                 >
                                                     {day}
                                                 </button>
@@ -1307,22 +1322,22 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                     </div>
                                 )}
 
-                                <p className="text-[10px] text-slate-500 italic">
+                                <p style={{ fontSize: 10, color: 'var(--muted)', fontStyle: 'italic' }}>
                                     When completed, a new instance will be created automatically.
                                 </p>
                             </div>
                         )}
                     </div>
 
-                    <div>
-                         <label className="text-xs font-medium text-slate-600 mb-1 block">Dependencies</label>
-                         <div className="space-y-1">
+                    <div className="field" style={{ marginBottom: 0 }}>
+                         <label>Dependencies</label>
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                              {dependencyIds.map(depId => {
                                  const depTask = allTasks.find(t => t.id === depId);
                                  return depTask ? (
-                                     <div key={depId} className="flex justify-between items-center bg-white px-2 py-1 rounded border border-slate-200 text-xs">
-                                         <span className="truncate max-w-[120px]">{depTask.title}</span>
-                                         <button onClick={() => setDependencyIds(dependencyIds.filter(id => id !== depId))}><X className="w-3 h-3 text-slate-400 hover:text-red-500"/></button>
+                                     <div key={depId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--inset)', padding: '6px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)', fontSize: 12 }}>
+                                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120, color: 'var(--ink2)' }}>{depTask.title}</span>
+                                         <button onClick={() => setDependencyIds(dependencyIds.filter(id => id !== depId))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--red)', display: 'grid', placeItems: 'center' }}><X className="w-3 h-3"/></button>
                                      </div>
                                  ) : null;
                              })}
@@ -1332,7 +1347,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                                         setDependencyIds([...dependencyIds, e.target.value]);
                                     }
                                 }}
-                                className="w-full text-xs border border-slate-300 rounded bg-white px-2 py-1.5 mt-1 outline-none focus:border-blue-500"
+                                className="input"
                                 value=""
                              >
                                 <option value="">+ Add Dependency</option>
@@ -1349,46 +1364,46 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 z-10">
-          <button onClick={onClose} className="px-6 py-2 border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 transition-colors">Cancel</button>
-          <button onClick={handleSave} className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-md shadow-blue-600/20">Save Task</button>
+        <div className="modal-foot">
+          <button onClick={onClose} className="btn-g btn">Cancel</button>
+          <button onClick={handleSave} className="btn">Save Task</button>
         </div>
       </div>
 
       {/* KPI Achievement Modal */}
       {showKpiModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 animate-in fade-in slide-in-from-top-4">
-            <div className="px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-green-50 to-emerald-50">
-              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <CheckCircle2 className="w-6 h-6 text-green-600" />
+        <div className="overlay" style={{ zIndex: 110 }} onMouseDown={e => { if (e.target === e.currentTarget) handleKpiModalCancel(); }}>
+          <div className="modal animate-in fade-in slide-in-from-top-4" style={{ maxWidth: 640 }}>
+            <div className="modal-h" style={{ paddingBottom: 16, borderBottom: '1px solid var(--line)', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.02em', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--ink)' }}>
+                <CheckCircle2 className="w-6 h-6" style={{ color: 'var(--green)' }} />
                 Record KPI Achievements
-              </h2>
-              <p className="text-sm text-slate-600 mt-1">Enter the actual results achieved for each KPI target</p>
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--muted)' }}>Enter the actual results achieved for each KPI target</p>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {impactMetrics.map(metric => (
-                <div key={metric.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                  <div className="flex items-start justify-between mb-3">
+                <div key={metric.id} className="subpanel">
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-800">{metric.type}</h3>
+                      <h3 style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink)' }}>{metric.type}</h3>
                       {metric.description && (
-                        <p className="text-xs text-slate-500 mt-0.5">{metric.description}</p>
+                        <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{metric.description}</p>
                       )}
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-slate-500 uppercase font-medium">Target</div>
-                      <div className="text-lg font-bold text-blue-600">
-                        {metric.type === ImpactType.REVENUE && metric.currency && `${metric.currency} `}
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'uppercase', fontWeight: 600 }}>Target</div>
+                      <div className="num" style={{ fontSize: 18, fontWeight: 800, color: 'var(--accent)' }}>
+                        {metric.type === ImpactType.REVENUE && metric.currency && `${currencySymbol(metric.currency)} `}
                         {metric.value.toLocaleString()}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <label className="text-xs font-medium text-slate-700 mb-1 block">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div className="field" style={{ flex: 1, marginBottom: 0 }}>
+                      <label>
                         Actual Achieved {metric.type === ImpactType.REVENUE && `(${metric.currency})`}
                       </label>
                       <input
@@ -1401,21 +1416,22 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                             achievedValue: value === '' ? undefined : parseFloat(value)
                           });
                         }}
-                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-lg font-semibold"
+                        className="input"
+                        style={{ fontSize: 18, fontWeight: 600 }}
                         placeholder="0"
                         autoFocus={impactMetrics[0].id === metric.id}
                       />
                     </div>
-                    <div className="pt-6">
+                    <div style={{ paddingTop: 24 }}>
                       {metric.achievedValue !== undefined && metric.achievedValue >= metric.value ? (
-                        <div className="flex items-center gap-1 text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--green-ink)', background: 'var(--green-bg)', padding: '8px 12px', borderRadius: 'var(--radius-sm)' }}>
                           <CheckCircle2 className="w-5 h-5" />
-                          <span className="text-sm font-bold">Target Met!</span>
+                          <span style={{ fontSize: 13, fontWeight: 700 }}>Target Met!</span>
                         </div>
                       ) : metric.achievedValue !== undefined && metric.achievedValue > 0 ? (
-                        <div className="text-sm text-slate-600">
-                          <span className="font-semibold">{((metric.achievedValue / metric.value) * 100).toFixed(0)}%</span>
-                          <div className="text-xs text-slate-500">of target</div>
+                        <div style={{ fontSize: 13, color: 'var(--ink2)' }}>
+                          <span style={{ fontWeight: 600 }}>{((metric.achievedValue / metric.value) * 100).toFixed(0)}%</span>
+                          <div style={{ fontSize: 12, color: 'var(--muted)' }}>of target</div>
                         </div>
                       ) : null}
                     </div>
@@ -1424,25 +1440,26 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               ))}
 
               {impactMetrics.length === 0 && (
-                <div className="text-center py-8 text-slate-400">
-                  <BarChart2 className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">No KPIs to record</p>
+                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--faint)' }}>
+                  <BarChart2 className="w-12 h-12" style={{ margin: '0 auto 8px', opacity: .5 }} />
+                  <p style={{ fontSize: 13 }}>No KPIs to record</p>
                 </div>
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+            <div className="modal-foot">
               <button
                 onClick={handleKpiModalCancel}
-                className="px-6 py-2 border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 transition-colors"
+                className="btn-g btn"
               >
                 Cancel
               </button>
               <button
                 onClick={handleKpiModalSave}
-                className="px-6 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 shadow-md shadow-green-600/20 transition-colors"
+                className="btn"
+                style={{ background: 'var(--green)', boxShadow: 'none' }}
               >
-                Save & Mark Complete
+                Save &amp; Mark Complete
               </button>
             </div>
           </div>

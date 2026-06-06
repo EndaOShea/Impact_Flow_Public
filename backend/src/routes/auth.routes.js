@@ -19,8 +19,8 @@ import { authRateLimiter, recoveryRateLimiter } from '../middleware/security.mid
 const router = express.Router();
 
 // Password complexity regex - must match frontend validation
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-const PASSWORD_ERROR = 'Password must be at least 8 characters with uppercase, lowercase, number, and special character (@$!%*?&)';
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+const PASSWORD_ERROR = 'Password must be at least 8 characters with uppercase, lowercase, number, and a special character (e.g. !@#$%^&*)';
 
 // ============================================================================
 // REGISTER NEW USER

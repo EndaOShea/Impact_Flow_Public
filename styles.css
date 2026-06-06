@@ -12,28 +12,26 @@
   background: transparent;
 }
 
-/* Default Thumb (Light Grey for White Backgrounds) */
+/* Default Thumb (token-driven, follows theme) */
 ::-webkit-scrollbar-thumb {
-  background-color: #cbd5e1; /* slate-300 */
+  background-color: var(--line, #cbd5e1);
   border-radius: 6px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: #94a3b8; /* slate-400 */
+  background-color: var(--faint, #94a3b8);
 }
 
-/* Specific Styling for Dark Backgrounds (Sidebar) */
-.bg-slate-900 ::-webkit-scrollbar-thumb,
-.bg-slate-950 ::-webkit-scrollbar-thumb,
-aside ::-webkit-scrollbar-thumb {
+/* Dark theme + the dark sidebar use translucent thumbs */
+[data-theme="dark"] ::-webkit-scrollbar-thumb,
+.sb ::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.2);
 }
 
-.bg-slate-900 ::-webkit-scrollbar-thumb:hover,
-.bg-slate-950 ::-webkit-scrollbar-thumb:hover,
-aside ::-webkit-scrollbar-thumb:hover {
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover,
+.sb ::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.4);
 }
 

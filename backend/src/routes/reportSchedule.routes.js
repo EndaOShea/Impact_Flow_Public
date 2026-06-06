@@ -84,9 +84,9 @@ router.post('/', requireAuth, async (req, res) => {
             [
                 req.user.id, name, frequency, time,
                 dailyScope || null, monthlyRunDay || null, monthlyScope || null, monthlyRollingValue || null,
-                customInterval || null, weekDays || null,
+                customInterval || null, weekDays ? JSON.stringify(weekDays) : null,
                 rangeStartOffset || 0, rangeEndOffset || 0,
-                recipients || [], active !== false
+                JSON.stringify(recipients || []), active !== false
             ]
         );
 

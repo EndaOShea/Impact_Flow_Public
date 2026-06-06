@@ -656,10 +656,20 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/subtasks', async (req, res) => {
     try {
         const { id } = req.params;
+        const user = req.user;
         const { title, estimatedHours, category, notes, isMilestone, milestoneDescription } = req.body;
 
         if (!title) {
             return res.status(400).json({ error: 'Subtask title is required' });
+        }
+
+        // Verify the task exists and belongs to the authenticated user
+        const taskCheck = await query(
+            'SELECT id FROM tasks WHERE id = $1 AND creator_id = $2',
+            [id, user.id]
+        );
+        if (taskCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
         }
 
         const posResult = await query(
@@ -696,8 +706,20 @@ router.post('/:id/subtasks', async (req, res) => {
 
 router.put('/:id/subtasks/:subtaskId', async (req, res) => {
     try {
-        const { subtaskId } = req.params;
+        const { id, subtaskId } = req.params;
+        const user = req.user;
         const { title, completed, hoursSpent, estimatedHours, category, notes, isMilestone, milestoneDescription } = req.body;
+
+        // Verify the subtask belongs to a task owned by the authenticated user
+        const ownerCheck = await query(
+            `SELECT s.id FROM subtasks s
+             JOIN tasks t ON t.id = s.task_id
+             WHERE s.id = $1 AND t.id = $2 AND t.creator_id = $3`,
+            [subtaskId, id, user.id]
+        );
+        if (ownerCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Subtask not found' });
+        }
 
         const result = await query(
             `UPDATE subtasks SET
@@ -728,7 +750,19 @@ router.put('/:id/subtasks/:subtaskId', async (req, res) => {
 
 router.delete('/:id/subtasks/:subtaskId', async (req, res) => {
     try {
-        const { subtaskId } = req.params;
+        const { id, subtaskId } = req.params;
+        const user = req.user;
+
+        // Verify the subtask belongs to a task owned by the authenticated user
+        const ownerCheck = await query(
+            `SELECT s.id FROM subtasks s
+             JOIN tasks t ON t.id = s.task_id
+             WHERE s.id = $1 AND t.id = $2 AND t.creator_id = $3`,
+            [subtaskId, id, user.id]
+        );
+        if (ownerCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Subtask not found' });
+        }
 
         const result = await query('DELETE FROM subtasks WHERE id = $1 RETURNING title', [subtaskId]);
 
@@ -755,6 +789,15 @@ router.post('/:id/comments', async (req, res) => {
 
         if (!text || text.trim().length === 0) {
             return res.status(400).json({ error: 'Comment text is required' });
+        }
+
+        // Verify the task exists and belongs to the authenticated user
+        const taskCheck = await query(
+            'SELECT id FROM tasks WHERE id = $1 AND creator_id = $2',
+            [id, user.id]
+        );
+        if (taskCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Task not found' });
         }
 
         const result = await query(

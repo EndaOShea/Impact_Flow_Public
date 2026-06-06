@@ -33,12 +33,18 @@ dist-ssr
 docs
 older_docs
 
+# Redesign prototype / reference scaffolding (not shipped)
+design
+
 issues
 
 node_modules
 
 # Database files
 backend/database/*
+# ...but keep the schema + seed so a fresh clone can initialize the DB
+!backend/database/schema.sql
+!backend/database/seed.sql
 *.db
 *.sqlite
 *.sqlite3

@@ -51,6 +51,39 @@ class ApiClient {
     }
 
     // ============================================================================
+    // GENERIC HTTP HELPERS
+    // ============================================================================
+
+    /** Generic GET request (returns the parsed JSON body) */
+    async get<T = any>(endpoint: string): Promise<T> {
+        return await this.request<T>(endpoint, { method: 'GET' });
+    }
+
+    /** Generic POST request */
+    async post<T = any>(endpoint: string, body?: unknown): Promise<T> {
+        return await this.request<T>(endpoint, {
+            method: 'POST',
+            ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        });
+    }
+
+    /** Generic PUT request */
+    async put<T = any>(endpoint: string, body?: unknown): Promise<T> {
+        return await this.request<T>(endpoint, {
+            method: 'PUT',
+            ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        });
+    }
+
+    /** Generic DELETE request */
+    async delete<T = any>(endpoint: string, body?: unknown): Promise<T> {
+        return await this.request<T>(endpoint, {
+            method: 'DELETE',
+            ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        });
+    }
+
+    // ============================================================================
     // AUTHENTICATION
     // ============================================================================
 

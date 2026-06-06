@@ -9,8 +9,8 @@ interface AuthScreenProps {
 
 type AuthMode = 'LOGIN' | 'REGISTER' | 'RECOVER';
 
-const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-const PASSWORD_REQUIREMENTS = "Password must be at least 8 characters and include uppercase, lowercase, number, and special character (@$!%*?&).";
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{8,}$/;
+const PASSWORD_REQUIREMENTS = "Password must be at least 8 characters and include uppercase, lowercase, number, and a special character (e.g. !@#$%^&*).";
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
   const [mode, setMode] = useState<AuthMode>('LOGIN');
