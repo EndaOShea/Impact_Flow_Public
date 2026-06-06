@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Impact Flow is a single-user personal task management application with impact tracking and AI-powered diagram generation. Built with TypeScript, React 19, and Vite.
+Impact Flow is a single-user personal task management application with impact tracking, projects, and reporting. Built with TypeScript, React 19, and Vite, on a themeable (light/dark) hand-written CSS design system.
 
 ## Development Commands
 
@@ -44,12 +44,9 @@ npm run preview
 
 ## Environment Configuration
 
-Create a `.env.local` file with:
-```
-GEMINI_API_KEY=your_gemini_api_key_here
-```
+The frontend requires no API keys. Runtime/secret configuration is supplied via a `.env` file consumed by Docker Compose (see **Docker Deployment**; template in `.env.example`).
 
-The API key is required for AI-powered Mermaid diagram generation in task strategy planning.
+> The earlier AI/Gemini Mermaid-diagram feature has been **removed** — there is no `services/gemini.ts` and `GEMINI_API_KEY` is not used.
 
 ## Architecture
 
@@ -57,12 +54,12 @@ The API key is required for AI-powered Mermaid diagram generation in task strate
 
 **PostgreSQL Backend** (`backend/`):
 - Express.js REST API server on port 2001
-- PostgreSQL database with schema in `backend/database/schema.sql`
-- Session-based authentication with secure cookies
+- PostgreSQL database with schema in `backend/database/schema.sql` (tracked; auto-loaded on first DB init)
+- **Bearer-token authentication**: the session token is returned on login and sent via the `Authorization: Bearer` header. No session cookie is issued or accepted (no CSRF surface).
 
 **Frontend API Client** (`services/api.ts`):
-- Singleton `ApiClient` class handles all HTTP requests
-- Automatic session token management via localStorage
+- Singleton `ApiClient` class handles all HTTP requests (incl. generic `get/post/put/delete` helpers)
+- Stores the session token in localStorage and attaches it as a Bearer header
 
 ### State Management
 
@@ -74,15 +71,17 @@ Main app state in `App.tsx`:
 
 ### Component Structure
 
-- **App.tsx**: Main orchestrator, handles auth, filtering, routing between views
-- **TaskModal.tsx**: Modal for creating/editing tasks with subtasks, impact metrics, diagrams
-- **AuthScreen.tsx**: Login/registration with username + password
-- **CalendarView.tsx**: Monthly calendar with task visualization
-- **TimelineView.tsx**: Gantt-style timeline view
-- **ImpactChart.tsx**: Impact metrics visualization using Recharts
-- **SystemReport.tsx**: Analytics and reporting dashboard
-- **MermaidDiagram.tsx**: Mermaid.js flowchart renderer
-- **ApiKeySettings.tsx**: Settings panel for managing user API keys
+- **App.tsx**: Main orchestrator — auth gating, data load, filtering, theme (light/dark), view routing, modals
+- **Sidebar.tsx / TopBar.tsx**: app shell (nav + header)
+- **DashboardView / TasksView / NotificationsView / SettingsView**: the four inline views, extracted as components
+- **ProjectsView.tsx / CalendarView.tsx / TimelineView.tsx**: projects grid/list, monthly calendar, Gantt timeline
+- **SystemReport.tsx / TemporalMetricsCharts.tsx**: reports (generate / schedule / trends) + temporal analytics
+- **TaskModal.tsx / ProjectModal.tsx**: tabbed create/edit modals; **TaskReport.tsx** renders the in-modal report
+- **AuthScreen.tsx**: Login / registration / recovery
+- **FilterBar.tsx**: shared filter chips for Dashboard/Tasks
+- **charts/Charts.tsx**: custom SVG chart primitives (AreaChart, Donut, BarChart, Sparkline)
+- Design system: `design-system.css` (tokens + light/dark via `[data-theme]`); helpers in `lib/display.ts` and `lib/chart.ts`
+- (`MermaidDiagram.tsx`, `SystemHealthDashboard.tsx` exist but are currently unused/orphaned)
 
 ### Type System
 
@@ -124,21 +123,16 @@ All types defined in `types.ts`:
 - Auto-adds `https://` if protocol missing
 - Security: `rel="noopener noreferrer"` prevents tabnabbing
 
-### AI Integration
+### Charts (no external chart library)
 
-**Gemini API Service** (`services/gemini.ts`):
-- Uses Google GenAI SDK (`@google/genai`)
-- Model: `gemini-2.5-flash`
-- Function: `generateDiagramCode(userDescription)` - converts natural language to Mermaid flowchart
-- API key stored encrypted per-user in the database
+- Charts are hand-rolled SVG primitives in `components/charts/Charts.tsx` (`AreaChart`, `Donut`, `BarChart`, `Sparkline`); math in `lib/chart.ts`. **Recharts has been removed** (≈half the JS bundle).
+- The earlier Gemini/Mermaid AI diagram feature has been removed (no `services/gemini.ts`; `@google/genai` and Mermaid are no longer used by the app).
 
 ### Styling
 
-- Tailwind CSS v3.4+ with PostCSS
-- Custom animations: fade-in, slide-in-from-top (defined in tailwind.config.js)
-- Custom scrollbar styling in styles.css
-- Responsive design with mobile sidebar overlay
-- Lucide React icons
+- **`design-system.css`** is the primary styling layer: CSS custom-property tokens with **light/dark theming** via `[data-theme]` on the `.shell` root (toggle in Settings + top bar; persisted in `impactflow_prefs_${userId}`). Fonts: Plus Jakarta Sans + Space Grotesk.
+- Tailwind CSS v3.4+ with PostCSS remains available for incidental utilities; custom scrollbar/print styles in `styles.css`.
+- Responsive with mobile sidebar overlay; Lucide React icons.
 
 ## Key Patterns
 
@@ -149,15 +143,11 @@ All types defined in `types.ts`:
 
 ## Security Notes
 
-- **Passwords**: Hashed with Argon2id (256 iterations, 512KB memory) on the backend
+- **Passwords**: Hashed with Argon2id (64 MiB memory, 3 iterations) on the backend
 - **Recovery keys**: Format `RK-XXXX-XXXX-XXXX`
-- **Sessions**: SHA-256 hashed tokens stored in database, 24-hour expiry
-- **API Keys**: User-specific encrypted storage using AES-256-GCM
-  - Encrypted server-side with `API_KEY_ENCRYPTION_SECRET` env var
-  - Stored in `user_api_keys` table per user/service
-  - Managed via Settings panel
-  - Frontend service: `services/apiKeyManager.ts`
-  - Backend endpoints: `POST/GET/DELETE /api/auth/api-key/:serviceName`
+- **Sessions**: 256-bit tokens stored only as SHA-256 hashes in the DB, 24-hour expiry. Auth is **Bearer-only** (`Authorization` header) — no session cookie is issued or accepted, so there is no CSRF surface.
+- **Reverse proxy**: `app.set('trust proxy', 1)` so rate limiters key on the real client IP behind nginx.
+- **Authorization**: every task/project resource (subtasks, comments, attachments, blockers) is scoped to the authenticated user (`creator_id`).
 - **File Upload Security**:
   - Whitelist-based file type validation (frontend + backend)
   - Max file size: 5MB, Max attachments: 3 per task
@@ -188,8 +178,9 @@ To reset database: Run `backend/scripts/seed-db.js` or drop and recreate Postgre
 ## Backend API Structure
 
 **Routes** (`backend/src/routes/`):
-- `auth.routes.js` - Authentication, password management, API key management
-- `task.routes.js` - Task CRUD with subtasks, comments, attachments
+- `auth.routes.js` - Authentication (Bearer tokens), password change, recovery, account deletion
+- `task.routes.js` - Task CRUD with subtasks, comments, attachments, blockers
+- `project.routes.js`, `analytics.routes.js`, `reportSchedule.routes.js` - projects, usage/temporal analytics, report schedules
 
 **Key Backend Files**:
 - `backend/src/utils/auth.js` - Password hashing, session management, API key encryption

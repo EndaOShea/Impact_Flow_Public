@@ -17,7 +17,7 @@
 
 ## 📖 Overview
 
-Impact Flow is a production-ready task management system designed for personal productivity with a focus on measuring and visualizing task impact. Built with modern web technologies, it features a PostgreSQL backend, diagram visualization, and comprehensive security measures.
+Impact Flow is a production-ready task management system designed for personal productivity with a focus on measuring and visualizing task impact. Built with modern web technologies, it features a PostgreSQL backend, a themeable (light/dark) UI, and comprehensive security measures.
 
 ### 🎯 Project Highlights
 
@@ -65,12 +65,13 @@ POSTGRES_USER=impactflow
 POSTGRES_PASSWORD=your_secure_password
 POSTGRES_DB=impactflow_db
 
-# Security (generate with: openssl rand -base64 48)
+# Security (generate each with: openssl rand -base64 48)
 SESSION_SECRET=your_session_secret_here
+API_KEY_ENCRYPTION_SECRET=your_encryption_secret_here
 
 # Application
 FRONTEND_URL=http://localhost:2080
-VITE_API_URL=http://localhost:2001
+VITE_API_URL=http://localhost:2001/api
 NODE_ENV=production
 ```
 
@@ -83,11 +84,10 @@ docker-compose -f docker-compose.prod.yml up -d
 - **Frontend**: http://localhost:2080
 - **Backend API**: http://localhost:2001
 
-**5. Login with test account:**
-- **Username**: `user`
-- **Password**: `Password123!`
+**5. Create your account:**
+The database starts empty — open the frontend and **Sign Up** to create your account.
 
-> 💡 **Note**: Change the default password immediately in a production environment. This is a demo account for testing purposes.
+> 💡 Password policy: at least 8 characters with uppercase, lowercase, a number, and a special character. (The Docker Compose stack loads only the schema, not seed data.)
 
 ### Local Development (Without Docker)
 
@@ -131,7 +131,7 @@ npm install
 npm run dev
 ```
 
-Frontend runs on `http://localhost:3000`
+Frontend runs on `http://localhost:2080`
 
 #### 3. Login
 - Username: `user`
@@ -151,10 +151,9 @@ Frontend runs on `http://localhost:3000`
 
 ### 📊 Impact Tracking & Analytics
 - **Impact Metrics**: Track revenue, efficiency gains, customer satisfaction, and custom metrics
-- **Data Visualization**: Interactive charts and graphs using Recharts
-- **Multiple Views**: Dashboard, List, Calendar (monthly), Timeline (Gantt-style), and Reports
-- **System Health Dashboard**: Monitor project progress and performance metrics
-- **Mermaid Diagrams**: Visualize task strategies and workflows with flowcharts
+- **Data Visualization**: Interactive charts built on lightweight custom SVG primitives (no heavy chart dependency)
+- **Multiple Views**: Dashboard, Tasks, Projects, Calendar (monthly), Timeline (Gantt-style), and Reports
+- **Themeable UI**: Light/dark theme toggle, persisted per user
 
 ### 📎 File Management
 - **Secure Attachments**: Upload up to 3 files per task (5MB max each)
@@ -163,9 +162,10 @@ Frontend runs on `http://localhost:3000`
 - **Resource Links**: Add external URLs with automatic security measures
 
 ### 🔐 Security & Authentication
-- **Session-Based Auth**: Secure HTTP-only cookies with 24-hour expiry
-- **Password Security**: Argon2id hashing with configurable parameters
-- **Rate Limiting**: Protects against brute-force and DoS attacks
+- **Bearer-Token Auth**: token sent in the `Authorization` header (24-hour expiry); no cookies → no CSRF surface
+- **Password Security**: Argon2id hashing (64 MiB / 3 iterations), account lockout, password-reuse history
+- **Rate Limiting**: per-client (behind `trust proxy`) protection against brute-force
+- **Per-User Authorization**: every resource scoped to its owner (`creator_id`)
 - **File Upload Security**: Blocks executables, scripts, SVG (XSS), and ZIP files
 - **SQL Injection Protection**: Parameterized queries throughout
 
@@ -182,17 +182,17 @@ Frontend runs on `http://localhost:3000`
 - **Build Tool**: Vite (fast HMR and optimized builds)
 - **Styling**: Tailwind CSS 3.4+ with PostCSS
 - **State Management**: React Hooks (useState, useMemo, useEffect)
-- **Charts**: Recharts for data visualization
-- **Diagrams**: Mermaid.js for flowchart rendering
+- **Charts**: custom SVG chart primitives (no external chart library)
+- **Design System**: hand-written `design-system.css` with light/dark theming
 - **Icons**: Lucide React
 - **HTTP Client**: Custom ApiClient singleton with automatic session management
 
 ### Backend
 - **Runtime**: Node.js with Express.js
 - **Database**: PostgreSQL 14+ with connection pooling
-- **Authentication**: Session-based with Argon2id password hashing
+- **Authentication**: Bearer-token sessions with Argon2id password hashing
 - **Session Storage**: SHA-256 hashed tokens with 24-hour expiry
-- **Security Middleware**: CORS, rate limiting, helmet
+- **Security Middleware**: CORS, rate limiting (`trust proxy`), helmet
 
 ### DevOps & Infrastructure
 - **Containerization**: Docker with multi-stage builds
@@ -236,20 +236,27 @@ Impact_Flow_App/
 │   ├── Dockerfile                 # Production container
 │   └── Dockerfile.dev             # Development container
 │
+├── App.tsx                         # Main application orchestrator (root)
+├── design-system.css               # Design tokens + light/dark theming
 ├── components/                     # React Components
-│   ├── App.tsx                    # Main application orchestrator
-│   ├── AuthScreen.tsx             # Login/registration
-│   ├── TaskModal.tsx              # Task creation/editing
-│   ├── ProjectModal.tsx           # Project management
+│   ├── Sidebar.tsx, TopBar.tsx     # App shell (nav + header)
+│   ├── DashboardView, TasksView, NotificationsView, SettingsView
+│   ├── ProjectsView.tsx           # Projects grid/list
 │   ├── CalendarView.tsx           # Monthly calendar
 │   ├── TimelineView.tsx           # Gantt timeline
-│   ├── ImpactChart.tsx            # Impact visualization
-│   ├── AnalyticsDashboard.tsx     # Analytics & reports
-│   ├── SystemHealthDashboard.tsx  # System metrics
-│   └── MermaidDiagram.tsx         # Mermaid flowchart diagrams
+│   ├── SystemReport.tsx           # Reports (generate/schedule/trends)
+│   ├── TemporalMetricsCharts.tsx  # Temporal analytics
+│   ├── TaskModal.tsx, ProjectModal.tsx, TaskReport.tsx
+│   ├── AuthScreen.tsx             # Login/registration/recovery
+│   ├── FilterBar.tsx              # Shared filter chips
+│   └── charts/Charts.tsx          # Custom SVG chart primitives
 │
-├── services/                       # API & External Services
-│   ├── api.ts                     # ApiClient singleton
+├── lib/                            # Helpers
+│   ├── chart.ts                   # SVG chart math
+│   └── display.ts                 # Status/priority/format helpers
+│
+├── services/                       # API & services
+│   ├── api.ts                     # ApiClient singleton (Bearer auth)
 │   ├── analytics.ts               # Analytics service
 │   └── fileValidation.ts          # Client-side validation
 │
@@ -341,8 +348,8 @@ const project = await api.saveProject({
 This application implements comprehensive security measures following industry best practices:
 
 ### Authentication & Authorization
-- **Password Security**: Argon2id hashing with 256 iterations and 512KB memory cost
-- **Session Management**: SHA-256 hashed tokens with HTTP-only secure cookies
+- **Password Security**: Argon2id hashing (64 MiB memory, 3 iterations), account lockout, password-reuse history
+- **Session Management**: 256-bit tokens stored as SHA-256 hashes; sent as Bearer tokens in the `Authorization` header (no cookies → no CSRF surface)
 - **Token Expiry**: 24-hour session timeout with automatic cleanup
 - **Recovery System**: Secure password reset with recovery keys (format: `RK-XXXX-XXXX-XXXX`)
 
@@ -369,11 +376,11 @@ This application implements comprehensive security measures following industry b
 
 The PostgreSQL database includes:
 
-- **Core Tables**: `users`, `tasks`, `projects`, `subtasks`
-- **Impact Tracking**: `impact_metrics`, `temporal_metrics`
-- **Collaboration**: `comments`, `attachments`, `resource_links`, `activity_log`
-- **Scheduling**: `report_schedules`, `recurring_tasks`
-- **Security**: `sessions`
+- **Core Tables**: `users`, `tasks`, `projects`, `subtasks`, `task_dependencies`
+- **Impact Tracking**: `impact_metrics`, `usage_analytics`
+- **Collaboration**: `comments`, `attachments`, `team_members`, `task_blockers`, `activity_log`, `audit_log`
+- **Scheduling**: `report_schedules`
+- **Security**: `sessions`, `password_history`
 
 **Migrations**: Located in `backend/database/migrations/` for version control and schema updates.
 
@@ -382,7 +389,7 @@ The PostgreSQL database includes:
 ## 🎨 UI/UX Features
 
 - **Responsive Design**: Mobile-friendly with adaptive layouts
-- **Dark Mode Support**: System preference detection (ready for implementation)
+- **Light/Dark Theme**: Full theme toggle (Settings + top bar), persisted per user
 - **Custom Animations**: Smooth transitions with Tailwind CSS animations
 - **Accessibility**: Semantic HTML and keyboard navigation support
 - **Custom Scrollbars**: Styled scrollbars for better aesthetics
