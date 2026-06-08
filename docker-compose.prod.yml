@@ -86,8 +86,12 @@ services:
     container_name: impact-flow-nginx
     restart: unless-stopped
     depends_on:
-      - frontend
-      - backend
+      # Wait for upstreams to be healthy so nginx isn't proxying to a dead
+      # backend during boot (avoids a spurious unhealthy window on start).
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     ports:
       # localhost ONLY - the host reverse proxy (host nginx) terminates TLS and proxies here.
       # TLS is owned by the host proxy, not this container; no public 443 binding.
@@ -97,7 +101,12 @@ services:
     networks:
       - backend-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      # Test nginx itself (self-served /healthz), not the backend. The backend
+      # has its own healthcheck — don't cascade its state onto the proxy.
+      # Use 127.0.0.1, NOT localhost: this config listens on IPv4 0.0.0.0:80 only,
+      # but `localhost` resolves to ::1 (IPv6) first inside the container → connection
+      # refused. (This was the real cause of the (unhealthy) status.)
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
