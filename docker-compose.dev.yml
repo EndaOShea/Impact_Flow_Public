@@ -34,7 +34,6 @@ services:
       PORT: 2001
       DATABASE_URL: postgresql://impactflow_user:dev_password@postgres:5432/impactflow_db
       SESSION_SECRET: dev-secret-key-not-for-production
-      API_KEY_ENCRYPTION_SECRET: dev-encryption-secret-not-for-production
       FRONTEND_URL: http://localhost:2080
       SESSION_DURATION_HOURS: 24
       SESSION_CLEANUP_INTERVAL_MINUTES: 60

@@ -44,9 +44,7 @@ npm run preview
 
 ## Environment Configuration
 
-The frontend requires no API keys. Runtime/secret configuration is supplied via a `.env` file consumed by Docker Compose (see **Docker Deployment**; template in `.env.example`).
-
-> The earlier AI/Gemini Mermaid-diagram feature has been **removed** — there is no `services/gemini.ts` and `GEMINI_API_KEY` is not used.
+Runtime/secret configuration is supplied via a `.env` file consumed by Docker Compose (see **Docker Deployment**; template in `.env.example`).
 
 ## Architecture
 
@@ -126,7 +124,6 @@ All types defined in `types.ts`:
 ### Charts (no external chart library)
 
 - Charts are hand-rolled SVG primitives in `components/charts/Charts.tsx` (`AreaChart`, `Donut`, `BarChart`, `Sparkline`); math in `lib/chart.ts`. **Recharts has been removed** (≈half the JS bundle).
-- The earlier Gemini/Mermaid AI diagram feature has been removed (no `services/gemini.ts`; `@google/genai` and Mermaid are no longer used by the app).
 
 ### Styling
 
@@ -170,10 +167,9 @@ To reset database: Run `backend/scripts/seed-db.js` or drop and recreate Postgre
 
 1. **Docker Ports**: Production runs on port 2080 (frontend) and 2001 (backend), not 3000
 2. **API URL Configuration**: Frontend must be built with correct `VITE_API_URL` (set in docker-compose.prod.yml)
-3. **API Key Storage**: User API keys are stored encrypted in the backend database, not in environment variables
-4. **Task Filtering**: Default filter is "Active / Upcoming" (excludes completed/failed), sort is DESC (newest first)
-5. **Backend Required**: The frontend requires the backend API server running on port 2001
-6. **File Uploads**: Only specific file types allowed (no ZIP, SVG, executables) - see security notes
+3. **Task Filtering**: Default filter is "Active / Upcoming" (excludes completed/failed), sort is DESC (newest first)
+4. **Backend Required**: The frontend requires the backend API server running on port 2001
+5. **File Uploads**: Only specific file types allowed (no ZIP, SVG, executables) - see security notes
 
 ## Backend API Structure
 
@@ -183,7 +179,7 @@ To reset database: Run `backend/scripts/seed-db.js` or drop and recreate Postgre
 - `project.routes.js`, `analytics.routes.js`, `reportSchedule.routes.js` - projects, usage/temporal analytics, report schedules
 
 **Key Backend Files**:
-- `backend/src/utils/auth.js` - Password hashing, session management, API key encryption
+- `backend/src/utils/auth.js` - Password hashing, session management
 - `backend/src/utils/fileValidation.js` - File upload validation and security
 - `backend/src/config/database.js` - PostgreSQL connection pool
 - `backend/src/middleware/auth.middleware.js` - Session validation middleware
@@ -210,6 +206,5 @@ The application runs in Docker containers for production:
 Required in `.env` file (see `.env.example`):
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
 - `SESSION_SECRET` (generate with: `openssl rand -base64 48`)
-- `API_KEY_ENCRYPTION_SECRET` (for encrypting user API keys)
 - `FRONTEND_URL` (CORS configuration)
 - `VITE_API_URL` (frontend API endpoint)

@@ -74,7 +74,6 @@ DATABASE_URL=postgresql://username:password@localhost:5432/impactflow_db
 PORT=2001
 NODE_ENV=development
 SESSION_SECRET=generate-random-string-here-min-32-chars
-API_KEY_ENCRYPTION_SECRET=another-random-string-for-encryption
 FRONTEND_URL=http://localhost:3000
 ```
 
@@ -315,7 +314,6 @@ See `database/schema.sql` for full schema definition.
 NODE_ENV=production
 DATABASE_URL=postgresql://user:pass@production-db:5432/db
 SESSION_SECRET=64-char-random-hex-string
-API_KEY_ENCRYPTION_SECRET=64-char-random-hex-string
 FRONTEND_URL=https://yourdomain.com
 PORT=2001
 ```

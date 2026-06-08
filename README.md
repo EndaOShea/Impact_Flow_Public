@@ -65,9 +65,8 @@ POSTGRES_USER=impactflow
 POSTGRES_PASSWORD=your_secure_password
 POSTGRES_DB=impactflow_db
 
-# Security (generate each with: openssl rand -base64 48)
+# Security (generate with: openssl rand -base64 48)
 SESSION_SECRET=your_session_secret_here
-API_KEY_ENCRYPTION_SECRET=your_encryption_secret_here
 
 # Application
 FRONTEND_URL=http://localhost:2080

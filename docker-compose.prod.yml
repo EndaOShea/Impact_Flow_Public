@@ -38,7 +38,6 @@ services:
       PORT: 2001
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-impactflow_db}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required - generate with openssl rand -base64 48}
-      API_KEY_ENCRYPTION_SECRET: ${API_KEY_ENCRYPTION_SECRET:?API_KEY_ENCRYPTION_SECRET is required - generate with openssl rand -base64 48}
       FRONTEND_URL: ${FRONTEND_URL:-https://impact-flow.cora-branch.com}
       SESSION_DURATION_HOURS: ${SESSION_DURATION_HOURS:-24}
       SESSION_CLEANUP_INTERVAL_MINUTES: ${SESSION_CLEANUP_INTERVAL_MINUTES:-60}
